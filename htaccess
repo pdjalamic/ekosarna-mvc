@@ -1,0 +1,29 @@
+RewriteEngine On
+
+# Service Worker — dozvoli pristup sa parent scope-a
+<Files "sw.js">
+    Header set Service-Worker-Allowed "/"
+</Files>
+
+# Zaštita .env fajla
+<Files .env>
+    deny from all
+</Files>
+
+# Zaštita app/ foldera
+<FilesMatch "^\.">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Izuzeci — ovi fajlovi se pozivaju direktno
+RewriteRule ^telegram_webhook\.php$ - [L]
+RewriteRule ^telegram_cron\.php$ - [L]
+RewriteRule ^push_cron\.php$ - [L]
+
+# Ne preusmeravaj postojeće fajlove i foldere
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Sve ostalo ide kroz index.php
+RewriteRule ^(.*)$ index.php [QSA,L]

@@ -1,0 +1,11 @@
+{
+  "name": "Ekošarna Admin",
+  "short_name": "Ekošarna",
+  "description": "Ekošarna admin panel",
+  "start_url": "/mvc/",
+  "scope": "/mvc/",
+  "display": "standalone",
+  "background_color": "#1a3a6e",
+  "theme_color": "#1a3a6e",
+  "orientation": "portrait"
+}
