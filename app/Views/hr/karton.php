@@ -385,10 +385,12 @@ function openGodisnjModal(zid) {
 }
 
 function sacuvajGodisnji() {
+    var zid = document.getElementById('hr-g-zid').value;
+    if (!zid || zid == '0') { alert('Greška: ID zaposlenog nije postavljen.'); return; }
     var fd = new FormData();
     fd.append('_action',      'hr_sacuvaj_godisnji');
     fd.append('id',           0);
-    fd.append('zaposleni_id', document.getElementById('hr-g-zid').value);
+    fd.append('zaposleni_id', zid);
     fd.append('godina',       document.getElementById('hr-g-godina').value);
     fd.append('ukupno_dana',  document.getElementById('hr-g-ukupno').value);
     fd.append('preneseno',    document.getElementById('hr-g-preneseno').value);
@@ -398,8 +400,11 @@ function sacuvajGodisnji() {
         if (d.ok) {
             document.getElementById('hr-godisnji-modal').style.display = 'none';
             location.reload();
+        } else {
+            alert(d.err || 'Greška pri čuvanju.');
         }
-    });
+    })
+    .catch(function(e) { alert('Greška: ' + e); });
 }
 
 function openOdsustvoModal(zid) {

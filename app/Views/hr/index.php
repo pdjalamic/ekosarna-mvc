@@ -22,7 +22,7 @@ $tip_boja = [
         $ostatak = ($z['ukupno_godisnji'] ?? 20) - ($z['iskoristio_godisnji'] ?? 0);
     ?>
     <a href="?page=hr&action=karton&id=<?= $z['id'] ?>"
-       style="text-decoration:none;background:#fff;border-radius:14px;border:1.5px solid var(--light2);padding:18px;display:flex;gap:14px;align-items:flex-start;opacity:<?= $z['aktivan'] ? '1' : '.6' ?>;">
+       style="text-decoration:none;background:<?= $z['korisnik_id'] ? '#eff6ff' : '#fff' ?>;border-radius:14px;border:1.5px solid <?= $z['korisnik_id'] ? '#bfdbfe' : 'var(--light2)' ?>;padding:18px;display:flex;gap:14px;align-items:flex-start;opacity:<?= $z['aktivan'] ? '1' : '.6' ?>;">
 
         <div style="width:48px;height:48px;border-radius:50%;overflow:hidden;flex-shrink:0;background:var(--light);display:flex;align-items:center;justify-content:center;border:2px solid var(--light2);">
             <?php if ($z['slika_putanja']): ?>
@@ -59,7 +59,8 @@ $tip_boja = [
 <!-- Odsustva ovog meseca -->
 <div style="background:#fff;border-radius:14px;border:1.5px solid var(--light2);padding:20px;">
     <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--blue);margin-bottom:14px;">
-        📅 Odsustva — <?= date('F Y') ?>
+        📅 Svi vidovi odsustva — <?= date('m.Y') ?>
+        <span style="font-size:10px;font-weight:400;color:var(--muted);text-transform:none;margin-left:6px;">(godišnji, bolovanje, neplaćeno...)</span>
     </div>
     <?php if (empty($odsustva_mesec)): ?>
     <p style="color:var(--muted);font-size:13px;">Nema evidentirane odsutnosti za ovaj mesec.</p>
@@ -138,7 +139,7 @@ function dodajZaposlenog() {
     fd.append('telefon',     document.getElementById('hr-add-telefon').value);
     fd.append('korisnik_id', document.getElementById('hr-add-korisnik').value);
 
-    fetch('', { method: 'POST', body: fd })
+    fetch('/mvc/?page=hr', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(d => {
         if (d.ok) window.location.href = '?page=hr&action=karton&id=' + d.id;
