@@ -28,7 +28,7 @@
           <?= $u['id'] == \Core\Auth::id() ? 'disabled' : '' ?>>
           <option value="Administrator" <?= $u['uloga']==='Administrator' ? 'selected':'' ?>>Administrator</option>
           <option value="Operater"      <?= $u['uloga']==='Operater'      ? 'selected':'' ?>>Operater</option>
-	  <option value="Elektricar">Električar</option>
+          <option value="Elektricar" <?= $u['uloga']==='Elektricar' ? 'selected':'' ?>>Električar</option>
         </select>
       </td>
       <td>
