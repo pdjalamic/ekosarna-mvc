@@ -227,7 +227,9 @@ class RasporedController extends \Core\Controller
 
                     // Obaveštenje
                     $datum_fmt = date('d.m.Y', strtotime($danInfo['datum']));
+                    $jeOdgovoran = ($odgovoran_id && $odgovoran_id === $radnik_id);
                     $poruka = "📋 Dodeljen si na zadatak: {$opis}\n🏗️ Gradilište: {$gNaziv}\n📅 Datum: {$datum_fmt}\n🕐 Vreme: " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
+                    if ($jeOdgovoran) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
 
                     if ($obavesti_tip === 'odmah') {
                         $this->notifikuj($radnik_id, Auth::ime(), $poruka);
@@ -331,6 +333,7 @@ class RasporedController extends \Core\Controller
                     $izmene = [];
                     if (!isset($stariRadnici[$radnik_id])) {
                         $poruka = "✅ Dodeljen si na zadatak:\n📋 {$opis}\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n📅 {$datum_fmt}\n🕐 " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
+                        if ($odgovoran_id && $odgovoran_id == $radnik_id) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
                     } else {
                         $star = $stariRadnici[$radnik_id];
                         if ($staro['gradiliste_id'] != $gradiliste_id) {
@@ -347,9 +350,19 @@ class RasporedController extends \Core\Controller
                             $izmene[] = "• Vreme: {$starVod}–{$starVdo} → {$novVod}–{$novVdo}";
                         }
 
-                        if (empty($izmene)) continue;
+                        $jeOdgovoranSad = ($odgovoran_id && $odgovoran_id == $radnik_id);
+                        $bioOdgovoranPre = ($staro['odgovoran_id'] && $staro['odgovoran_id'] == $radnik_id);
 
-                        $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n" . implode("\n", $izmene);
+                        if ($jeOdgovoranSad && !$bioOdgovoranPre) {
+                            $izmene[] = "• 📦 Određen si za unos materijala";
+                        } elseif (!$jeOdgovoranSad && $bioOdgovoranPre) {
+                            $izmene[] = "• 📦 Više nisi odgovoran za unos materijala";
+                        }
+
+if (empty($izmene)) continue;
+
+$poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n" . implode("\n", $izmene);
+                        if ($odgovoran_id && $odgovoran_id == $radnik_id) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
                     }
 
                     if ($obavesti_tip === 'odmah') {
