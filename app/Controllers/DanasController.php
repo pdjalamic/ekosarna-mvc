@@ -18,28 +18,24 @@ class DanasController extends \Core\Controller
 
         $uid = Auth::id();
 
-        // Ako je datum eksplicitno zadat u URL-u, koristi njega
         if (isset($_GET['datum'])) {
             $datum = $_GET['datum'];
         } else {
-            // Inače pronađi najbliži dan sa rasporedom (danas ili u budućnosti)
             $datum = $this->najblizjiDanSaRasporedom($uid);
         }
 
-        // Datumi: 1 pre, izabrani, 2 posle
-        // Generiši 4 datuma preskačući nedjelju (0 = nedjelja)
 $datumi = [];
 $dodato = 0;
 $offset = -1;
 while ($dodato < 4) {
     $d = date('Y-m-d', strtotime($datum . " $offset days"));
-    if (date('w', strtotime($d)) !== '0') { // 0 = nedjelja
+    if (date('w', strtotime($d)) !== '0') {
         $datumi[] = $d;
         $dodato++;
     }
     $offset++;
 }
-        // Stavke za sva 4 dana
+
         $dani = [];
         foreach ($datumi as $d) {
             $stmt = $this->db->prepare("
@@ -95,12 +91,11 @@ while ($dodato < 4) {
             $dani[$d] = $stavke;
         }
 
-        $this->view('danas/index', compact('dani', 'datum', 'datumi'));
+        $this->view('danas/index', compact('dani', 'datum', 'datumi', 'uid'));
     }
 
     private function najblizjiDanSaRasporedom(int $uid): string
     {
-        // Traži danas ili najbliži budući dan sa rasporedom
         $stmt = $this->db->prepare("
             SELECT rd.datum
             FROM raspored_radnici rr
@@ -114,7 +109,6 @@ while ($dodato < 4) {
         $stmt->execute([$uid, date('Y-m-d')]);
         $datum = $stmt->fetchColumn();
 
-        // Ako nema budućih, uzmi poslednji prošli
         if (!$datum) {
             $stmt = $this->db->prepare("
                 SELECT rd.datum
@@ -166,7 +160,6 @@ while ($dodato < 4) {
                 $stmt = $this->db->prepare("INSERT INTO raspored_poruke (stavka_id, autor_id, sadrzaj) VALUES (?, ?, ?)");
                 $stmt->execute([$stavka_id, $uid, $sadrzaj]);
 
-                // Notifikuj sve koji su pisali u ovom threadu (osim pošiljaoca)
                 $pisaliStmt = $this->db->prepare("
                     SELECT DISTINCT autor_id FROM raspored_poruke
                     WHERE stavka_id=? AND autor_id!=?
@@ -189,6 +182,160 @@ while ($dodato < 4) {
                     ")->execute([$uid, $stavka_id]);
                 }
                 $this->json(['ok' => true]);
+                break;
+
+            case 'danas_ai_parse':
+                $tekst = trim($_POST['tekst'] ?? '');
+                $tip   = in_array($_POST['tip'] ?? '', ['vreme', 'materijal']) ? $_POST['tip'] : 'vreme';
+
+                if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je prazan.']);
+
+                $apiKey = $_ENV['ANTHROPIC_API_KEY'] ?? '';
+                if (!$apiKey) $this->json(['ok' => false, 'err' => 'ANTHROPIC_API_KEY nije postavljen u .env']);
+
+                if ($tip === 'vreme') {
+                    $systemPrompt = <<<PROMPT
+Ti si asistent koji parsira kratke opise radnog vremena električara na srpskom jeziku.
+Iz slobodnog teksta izvuci vreme rada i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
+
+Format odgovora:
+{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena":"kratak opis rada"}
+
+Pravila:
+- vreme_od i vreme_do u formatu HH:MM (24h)
+- ukupno_sati = razlika vreme_do - vreme_od (ceo broj)
+- napomena: kratko šta je rađeno, max 120 znakova, izostavi ako nije navedeno
+- Izostavi polja kojih nema u tekstu
+- Odgovaraj SAMO validnim JSON-om, ništa više
+PROMPT;
+                } else {
+                    $systemPrompt = <<<PROMPT
+Ti si asistent koji parsira utrošeni materijal sa gradilišta, opisan slobodnim tekstom na srpskom jeziku.
+Izvuci listu potrošenog materijala i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
+
+Format odgovora:
+{"stavke":[{"naziv":"Kabal 3x1.5 N2XH","kolicina":69,"jm":"m"},{"naziv":"Buzir HF F16","kolicina":130,"jm":"m"}]}
+
+Pravila:
+- naziv materijala što precizniji i standardizovaniji
+- jm: m, kom, kg, m2, kpl, l, pak
+- Odgovaraj SAMO validnim JSON-om, ništa više
+PROMPT;
+                }
+
+                $payload = json_encode([
+                    'model'      => 'claude-haiku-4-5-20251001',
+                    'max_tokens' => 800,
+                    'system'     => $systemPrompt,
+                    'messages'   => [['role' => 'user', 'content' => $tekst]]
+                ]);
+
+                $ch = curl_init('https://api.anthropic.com/v1/messages');
+                curl_setopt_array($ch, [
+                    CURLOPT_RETURNTRANSFER => true,
+                    CURLOPT_POST           => true,
+                    CURLOPT_POSTFIELDS     => $payload,
+                    CURLOPT_HTTPHEADER     => [
+                        'Content-Type: application/json',
+                        'x-api-key: ' . $apiKey,
+                        'anthropic-version: 2023-06-01',
+                    ],
+                    CURLOPT_TIMEOUT => 30,
+                ]);
+
+                $response = curl_exec($ch);
+                $curlErr  = curl_error($ch);
+                curl_close($ch);
+
+                if ($curlErr) $this->json(['ok' => false, 'err' => 'cURL greška: ' . $curlErr]);
+
+                $apiData = json_decode($response, true);
+                if (!empty($apiData['error'])) {
+                    $this->json(['ok' => false, 'err' => 'API greška: ' . ($apiData['error']['message'] ?? 'Nepoznata')]);
+                }
+
+                $rawText = $apiData['content'][0]['text'] ?? '';
+                $rawText = preg_replace('/^```json\s*/i', '', trim($rawText));
+                $rawText = preg_replace('/```\s*$/i', '', $rawText);
+                $rawText = trim($rawText);
+
+                $parsed = json_decode($rawText, true);
+                if (!$parsed) $this->json(['ok' => false, 'err' => 'AI nije vratio validan JSON. Pokušaj ponovo.']);
+
+                $this->json(['ok' => true, 'tip' => $tip, 'data' => $parsed]);
+                break;
+
+            case 'danas_upisi_vreme':
+                $stavka_id = (int)($_POST['stavka_id'] ?? 0);
+                $meta_json = $_POST['meta'] ?? '';
+                if (!$stavka_id || !$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+
+                $check = $this->db->prepare("SELECT 1 FROM raspored_radnici WHERE stavka_id=? AND radnik_id=?");
+                $check->execute([$stavka_id, $uid]);
+                if (!$check->fetch()) $this->json(['ok' => false, 'err' => 'Nemate pristup ovoj stavci.']);
+
+                $meta = json_decode($meta_json, true);
+                if (!$meta) $this->json(['ok' => false, 'err' => 'Neispravan JSON.']);
+
+                $stmt = $this->db->prepare("
+                    INSERT INTO raspored_vreme
+                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, meta)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ");
+                $stmt->execute([
+                    $stavka_id, $uid, date('Y-m-d'),
+                    $meta['vreme_od'] ?? null,
+                    $meta['vreme_do'] ?? null,
+                    isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : null,
+                    $meta['napomena'] ?? null,
+                    $meta_json
+                ]);
+                $this->json(['ok' => true]);
+                break;
+
+            case 'danas_upisi_materijal':
+                $stavka_id = (int)($_POST['stavka_id'] ?? 0);
+                $meta_json = $_POST['meta'] ?? '';
+                if (!$stavka_id || !$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+
+                $check = $this->db->prepare("SELECT odgovoran_id FROM raspored_stavke WHERE id=?");
+                $check->execute([$stavka_id]);
+                $odgovoran_id = (int)$check->fetchColumn();
+                if ($odgovoran_id !== $uid) $this->json(['ok' => false, 'err' => 'Niste odgovorni za unos materijala.']);
+
+                $meta = json_decode($meta_json, true);
+                if (!$meta || empty($meta['stavke'])) $this->json(['ok' => false, 'err' => 'Nema stavki materijala.']);
+
+                $datum = date('Y-m-d');
+                $stmt  = $this->db->prepare("
+                    INSERT INTO raspored_materijal (stavka_id, radnik_id, datum, naziv, kolicina, jm)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                ");
+                foreach ($meta['stavke'] as $s) {
+                    $naziv    = trim($s['naziv'] ?? '');
+                    $kolicina = (float)($s['kolicina'] ?? 0);
+                    $jm       = trim($s['jm'] ?? 'kom');
+                    if (!$naziv || $kolicina <= 0) continue;
+                    $stmt->execute([$stavka_id, $uid, $datum, $naziv, $kolicina, $jm]);
+                }
+                $this->json(['ok' => true]);
+                break;
+
+            case 'danas_vreme_get':
+                $stavka_id = (int)($_POST['stavka_id'] ?? 0);
+                $stmt = $this->db->prepare("
+                    SELECT rv.*, k.ime AS radnik_ime
+                    FROM raspored_vreme rv
+                    JOIN admin_korisnici k ON rv.radnik_id = k.id
+                    WHERE rv.stavka_id = ?
+                    ORDER BY rv.datum DESC, rv.created_at DESC
+                ");
+                $stmt->execute([$stavka_id]);
+                $unosi = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+                foreach ($unosi as &$u) {
+                    $u['meta'] = $u['meta'] ? json_decode($u['meta'], true) : [];
+                }
+                $this->json(['ok' => true, 'unosi' => $unosi]);
                 break;
 
             default:
@@ -216,8 +363,6 @@ while ($dodato < 4) {
                         @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?chat_id={$chat_id}&text={$text}");
                     }
                 }
-                // android → Push (TODO)
-                // web → polling pokriva automatski
             }
         } catch (\Throwable $e) {}
     }

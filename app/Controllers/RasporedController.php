@@ -58,7 +58,6 @@ class RasporedController extends \Core\Controller
                 $stavke = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
                 $uid_for_count = Auth::id();
-		error_log("DEBUG uid_for_count=" . $uid_for_count);
                 foreach ($stavke as &$s) {
                     $stmt2 = $this->db->prepare("
                         SELECT rr.radnik_id, rr.vreme_od, rr.vreme_do, k.ime
@@ -83,7 +82,6 @@ class RasporedController extends \Core\Controller
                     $vStmt = $this->db->prepare("SELECT vidjeno_do FROM raspored_vidjeno WHERE stavka_id=? AND korisnik_id=?");
                     $vStmt->execute([$s['id'], $uid_for_count]);
                     $vidjeno_do = $vStmt->fetchColumn();
-		    error_log("DEBUG stavka=" . $s['id'] . " vidjeno_do=" . $vidjeno_do . " nova=" . ($s['nova_poruka'] ? 'DA' : 'NE'));
 
                     $referentni = $poslednja_moja;
                     if ($vidjeno_do && (!$referentni || $vidjeno_do > $referentni)) {
@@ -174,6 +172,7 @@ class RasporedController extends \Core\Controller
                 $radnici_data  = json_decode($_POST['radnici_json'] ?? '[]', true);
                 $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
+                $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
 
                 if (!$dan_id) $this->json(['ok' => false, 'err' => 'Nema dana.']);
 
@@ -195,10 +194,10 @@ class RasporedController extends \Core\Controller
                 $redosled = (int)$stmt->fetchColumn();
 
                 $stmt = $this->db->prepare("
-                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id)
+                    VALUES (?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled]);
+                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id]);
                 $stavka_id = $this->db->lastInsertId();
 
                 $upozorenja = [];
@@ -246,6 +245,7 @@ class RasporedController extends \Core\Controller
                 $radnici_novi  = json_decode($_POST['radnici_json'] ?? '[]', true);
                 $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
+                $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
 
                 // Staro stanje
                 $staroStmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE id=?");
@@ -278,9 +278,9 @@ class RasporedController extends \Core\Controller
                 $danStmt->execute([$staro['dan_id']]);
                 $datum_fmt = date('d.m.Y', strtotime($danStmt->fetchColumn()));
 
-                // Ažuriraj stavku
-                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=? WHERE id=?");
-                $stmt->execute([$gradiliste_id, $opis, $id]);
+                // Ažuriraj stavku (sa odgovoran_id)
+                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=? WHERE id=?");
+                $stmt->execute([$gradiliste_id, $opis, $odgovoran_id, $id]);
 
                 // Nova lista radnika
                 $noviMap = [];
@@ -330,10 +330,8 @@ class RasporedController extends \Core\Controller
                     // Generiši log poruku
                     $izmene = [];
                     if (!isset($stariRadnici[$radnik_id])) {
-                        // Novi radnik dodat
                         $poruka = "✅ Dodeljen si na zadatak:\n📋 {$opis}\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n📅 {$datum_fmt}\n🕐 " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
                     } else {
-                        // Postojeći radnik — proveri izmene
                         $star = $stariRadnici[$radnik_id];
                         if ($staro['gradiliste_id'] != $gradiliste_id) {
                             $izmene[] = "• Gradilište: {$gStaroNaziv} → {$gNovoNaziv}";
@@ -349,7 +347,7 @@ class RasporedController extends \Core\Controller
                             $izmene[] = "• Vreme: {$starVod}–{$starVdo} → {$novVod}–{$novVdo}";
                         }
 
-                        if (empty($izmene)) continue; // Nema izmena, ne šalji
+                        if (empty($izmene)) continue;
 
                         $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n" . implode("\n", $izmene);
                     }
@@ -365,7 +363,6 @@ class RasporedController extends \Core\Controller
                 break;
 
             case 'raspored_obrisi_stavku':
-                // Obavesti radnike pre brisanja
                 $staroStmt = $this->db->prepare("SELECT rs.*, g.naziv AS gn, rd.datum FROM raspored_stavke rs LEFT JOIN gradilista g ON rs.gradiliste_id=g.id JOIN raspored_dani rd ON rs.dan_id=rd.id WHERE rs.id=?");
                 $staroStmt->execute([$id]);
                 $stavo = $staroStmt->fetch(\PDO::FETCH_ASSOC);
@@ -426,11 +423,9 @@ class RasporedController extends \Core\Controller
                 $orig = $stmt->fetch(\PDO::FETCH_ASSOC);
                 if (!$orig) $this->json(['ok' => false, 'err' => 'Nedelja ne postoji.']);
 
-                // Automatski kopiraj u sledecu nedelju
                 $nova_datum_od = date('Y-m-d', strtotime($orig['datum_od'] . ' +7 days'));
                 $nova_datum_do = date('Y-m-d', strtotime($nova_datum_od . ' +5 days'));
 
-                // Proveri da li vec postoji nedelja za taj datum
                 $provera = $this->db->prepare("SELECT id FROM radne_nedelje WHERE datum_od=?");
                 $provera->execute([$nova_datum_od]);
                 if ($provera->fetchColumn()) {
@@ -457,8 +452,9 @@ class RasporedController extends \Core\Controller
                     $stmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE dan_id=?");
                     $stmt->execute([$dan['id']]);
                     foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $s) {
-                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled) VALUES (?, ?, ?, ?)");
-                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled']]);
+                        // Kopiraj i odgovoran_id
+                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id) VALUES (?, ?, ?, ?, ?)");
+                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled'], $s['odgovoran_id']]);
                         $nova_stavka_id = $this->db->lastInsertId();
 
                         $stmt = $this->db->prepare("SELECT * FROM raspored_radnici WHERE stavka_id=?");
@@ -543,10 +539,10 @@ class RasporedController extends \Core\Controller
                     }
 
                     $stavke_r[] = [
-                        'id'               => $sid,
-                        'poruka_count'     => $poruka_count,
-                        'nove_poruke_count'=> $nova_count,
-                        'nova_poruka'      => $nova_count > 0,
+                        'id'                => $sid,
+                        'poruka_count'      => $poruka_count,
+                        'nove_poruke_count' => $nova_count,
+                        'nova_poruka'       => $nova_count > 0,
                     ];
                 }
                 $this->json(['ok' => true, 'stavke' => $stavke_r]);
@@ -559,7 +555,6 @@ class RasporedController extends \Core\Controller
                 $datum_od = $stmt->fetchColumn();
                 if (!$datum_od) $this->json(['ok' => false, 'err' => 'Nedelja ne postoji.']);
 
-                // Proveri da li je buduća
                 $ponedeljak_ovaj = date('Y-m-d', strtotime('monday this week'));
                 if ($datum_od <= $ponedeljak_ovaj) {
                     $this->json(['ok' => false, 'err' => 'Nije dozvoljeno brisanje tekuće ili prošlih nedelja.']);
@@ -586,7 +581,6 @@ class RasporedController extends \Core\Controller
         }
     }
 
-    // Proveri preklapanje vremena
     private function proveritPreklapanje(int $radnik_id, int $dan_id, int $iskljuci_stavku_id, ?string $vreme_od, ?string $vreme_do): ?string
     {
         if (!$vreme_od || !$vreme_do) return null;
@@ -616,7 +610,6 @@ class RasporedController extends \Core\Controller
 
     private function zakaziObavestenje(int $stavka_id, int $radnik_id, string $poruka, string $send_at): void
     {
-        // Čuvamo u tabeli za cron da pokupi
         try {
             $stmt = $this->db->prepare("
                 INSERT INTO raspored_obavestenja (nedelja_id, send_at, poslato)

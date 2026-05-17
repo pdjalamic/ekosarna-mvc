@@ -1,6 +1,5 @@
 <?php
 $dani_puni = ['Ponedeljak', 'Utorak', 'Sreda', 'Četvrtak', 'Petak', 'Subota'];
-// Prošla nedelja = ne može se menjati
 $je_prosla = strtotime($ponedeljak) < strtotime('monday this week');
 $elektricari_json = json_encode($elektricari);
 
@@ -15,15 +14,12 @@ function gradiliste_boja_text(string $naziv): string {
 ?>
 
 <?php
-// Da li je trenutna nedelja buduća (može se brisati)?
 $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 ?>
 <div class="topbar-admin" style="flex-wrap:wrap;gap:10px;">
     <div class="page-title">Raspored rada</div>
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
         <a href="?page=raspored&datum=<?= $prethodna_nedelja ?>" class="btn-sm">←</a>
-
-        <!-- Dropdown za izbor nedelje -->
         <div style="position:relative;">
             <button type="button" onclick="toggleNedeljeDropdown()"
                 style="background:#fff;border:1.5px solid var(--light2);border-radius:8px;padding:6px 14px;font-size:14px;font-weight:700;color:var(--blue);cursor:pointer;display:flex;align-items:center;gap:8px;">
@@ -46,7 +42,6 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
                 <?php endif; ?>
             </div>
         </div>
-
         <a href="?page=raspored&datum=<?= $sledeca_nedelja ?>" class="btn-sm">→</a>
         <a href="?page=raspored&datum=<?= date('Y-m-d') ?>" class="btn-sm mark">Ova nedelja</a>
     </div>
@@ -146,7 +141,10 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             <td style="font-size:12px;vertical-align:middle;">
                 <?php foreach ($s['radnici'] as $r): ?>
                 <div class="rs-el-radnik-red">
-                    <span class="rs-el-ime-txt">👷 <?= h($r['ime']) ?></span>
+                    <span class="rs-el-ime-txt">
+                        <?= (isset($s['odgovoran_id']) && $s['odgovoran_id'] == $r['radnik_id']) ? '📦' : '👷' ?>
+                        <?= h($r['ime']) ?>
+                    </span>
                     <?php if ($r['vreme_od'] || $r['vreme_do']): ?>
                     <span class="rs-el-vreme-txt">
                         <?= $r['vreme_od'] ? substr($r['vreme_od'],0,5) : '' ?>
@@ -229,6 +227,15 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             </div>
         </div>
 
+        <!-- NOVO: Odgovoran za materijal -->
+        <div class="tim-form-group" id="rs-odgovoran-wrap" style="display:none;">
+            <label style="font-size:12px;font-weight:700;color:#b45309;">📦 Odgovoran za unos materijala</label>
+            <select id="rs-odgovoran-id"
+                style="border:1.5px solid #fde68a;border-radius:7px;padding:7px 10px;font-size:13px;background:#fffbeb;outline:none;width:100%;margin-top:4px;">
+                <option value="">— Niko nije određen —</option>
+            </select>
+        </div>
+
         <div style="border-top:1px solid var(--light2);padding-top:14px;margin-top:8px;">
             <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--blue);display:block;margin-bottom:8px;">Obaveštenje električarima</label>
             <div style="display:flex;flex-direction:column;gap:8px;">
@@ -268,8 +275,6 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
     </div>
 </div>
 
-<!-- Modal za kopiraj je uklonjen - sada direktan poziv -->
-
 <!-- MODAL: Poruke -->
 <div id="rs-poruke-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9997;align-items:center;justify-content:center;">
     <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:500px;max-height:80vh;overflow-y:auto;box-shadow:0 24px 80px #000a;position:relative;">
@@ -286,19 +291,19 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 </div>
 
 <style>
-.rs-tabela-wrap { overflow-x:auto; border-radius:12px; border:1.5px solid var(--light2); background:#fff; }
-.rs-tabela { width:100%; border-collapse:collapse; min-width:600px; }
-.rs-tabela thead th { background:var(--light); padding:10px 12px; text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.07em; color:var(--blue); border-bottom:1.5px solid var(--light2); }
-.rs-tabela td { padding:8px 12px; border-bottom:1px solid var(--light2); vertical-align:middle; font-size:13px; }
+.rs-tabela-wrap { overflow-x:auto;border-radius:12px;border:1.5px solid var(--light2);background:#fff; }
+.rs-tabela { width:100%;border-collapse:collapse;min-width:600px; }
+.rs-tabela thead th { background:var(--light);padding:10px 12px;text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--blue);border-bottom:1.5px solid var(--light2); }
+.rs-tabela td { padding:8px 12px;border-bottom:1px solid var(--light2);vertical-align:middle;font-size:13px; }
 .rs-tabela tbody tr:last-child td { border-bottom:none; }
 .rs-red:hover td { background:#f8faff !important; }
-.rs-el-radnik-red { display:flex; align-items:center; gap:8px; white-space:nowrap; margin-bottom:2px; }
+.rs-el-radnik-red { display:flex;align-items:center;gap:8px;white-space:nowrap;margin-bottom:2px; }
 .rs-el-ime-txt { font-size:12px; }
-.rs-el-vreme-txt { font-size:11px; color:var(--muted); background:var(--light); border-radius:4px; padding:1px 6px; }
-.rs-el-row { display:flex; align-items:center; justify-content:space-between; gap:10px; background:var(--light); border:1.5px solid var(--light2); border-radius:8px; padding:8px 12px; transition:border-color .15s; }
-.rs-el-row.active { border-color:var(--bluem); background:#eff6ff; }
-.rs-el-check { display:flex; align-items:center; gap:8px; cursor:pointer; font-size:13px; font-weight:500; flex:1; }
-.rs-el-vreme { display:flex; align-items:center; gap:6px; }
+.rs-el-vreme-txt { font-size:11px;color:var(--muted);background:var(--light);border-radius:4px;padding:1px 6px; }
+.rs-el-row { display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--light);border:1.5px solid var(--light2);border-radius:8px;padding:8px 12px;transition:border-color .15s; }
+.rs-el-row.active { border-color:var(--bluem);background:#eff6ff; }
+.rs-el-check { display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;flex:1; }
+.rs-el-vreme { display:flex;align-items:center;gap:6px; }
 </style>
 
 <script>
@@ -315,6 +320,34 @@ function toggleElektricar(eid) {
     var vreme = document.getElementById('rs-vreme-' + eid);
     if (cb.checked) { row.classList.add('active'); vreme.style.display = 'flex'; }
     else { row.classList.remove('active'); vreme.style.display = 'none'; }
+    azurirajOdgovornaSelect();
+}
+
+function azurirajOdgovornaSelect() {
+    var checked = [];
+    document.querySelectorAll('.rs-radnik-cb:checked').forEach(function(cb) {
+        var eid = cb.value;
+        var e = _rsElektricari.find(function(x) { return x.id == eid; });
+        if (e) checked.push(e);
+    });
+
+    var wrap = document.getElementById('rs-odgovoran-wrap');
+    var sel  = document.getElementById('rs-odgovoran-id');
+    var trenutni = sel.value;
+
+    sel.innerHTML = '<option value="">— Niko nije određen —</option>';
+    checked.forEach(function(e) {
+        var opt = document.createElement('option');
+        opt.value = e.id;
+        opt.textContent = '👷 ' + e.ime;
+        sel.appendChild(opt);
+    });
+
+    if (trenutni && checked.find(function(e) { return e.id == trenutni; })) {
+        sel.value = trenutni;
+    }
+
+    wrap.style.display = checked.length > 0 ? 'block' : 'none';
 }
 
 function resetModal() {
@@ -323,6 +356,8 @@ function resetModal() {
     document.getElementById('rs-err').style.display = 'none';
     document.getElementById('rs-obavesti-dt').style.display = 'none';
     document.querySelector('input[name="rs_obavesti"][value="odmah"]').checked = true;
+    document.getElementById('rs-odgovoran-id').value = '';
+    document.getElementById('rs-odgovoran-wrap').style.display = 'none';
     _rsElektricari.forEach(function(e) {
         var cb = document.querySelector('.rs-radnik-cb[value="'+e.id+'"]');
         if (cb) cb.checked = false;
@@ -339,8 +374,7 @@ function resetModal() {
 
 document.querySelectorAll('input[name="rs_obavesti"]').forEach(function(r) {
     r.addEventListener('change', function() {
-        document.getElementById('rs-obavesti-dt').style.display =
-            this.value === 'zakazano' ? 'block' : 'none';
+        document.getElementById('rs-obavesti-dt').style.display = this.value === 'zakazano' ? 'block' : 'none';
     });
 });
 
@@ -412,6 +446,14 @@ function openIzmeniStavku(stavkaId, danIndex) {
             }
         });
 
+        // Postavi odgovornog nakon što su čekboxovi postavljeni
+        setTimeout(function() {
+            azurirajOdgovornaSelect();
+            if (s.odgovoran_id) {
+                document.getElementById('rs-odgovoran-id').value = s.odgovoran_id;
+            }
+        }, 30);
+
         document.getElementById('rs-modal').style.display = 'flex';
     });
 }
@@ -454,6 +496,7 @@ function sacuvajStavku() {
     fd.append('radnici_json', JSON.stringify(radnici));
     fd.append('obavesti_tip', obavesti_tip);
     fd.append('obavesti_at', obavesti_at);
+    fd.append('odgovoran_id', document.getElementById('rs-odgovoran-id').value || 0);
 
     _rsPendingData = fd;
 
@@ -497,9 +540,7 @@ function initNedelja() {
     fd.append('datum_od', '<?= $ponedeljak ?>');
     fd.append('datum_do', '<?= $subota ?>');
     fd.append('id', 0);
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(d => { if (d.ok) location.reload(); });
+    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
 }
 
 function toggleNedeljeDropdown() {
@@ -545,17 +586,15 @@ function openPorukeStavke(stavkaId, naslov) {
     document.getElementById('rs-poruka-input').value = '';
     document.getElementById('rs-poruke-modal').style.display = 'flex';
     ucitajRasporedPoruke(stavkaId);
-    // Označi kao viđeno u sesiji
     var fdv = new FormData();
     fdv.append('_action', 'raspored_oznaci_vidjeno');
     fdv.append('stavka_id', stavkaId);
     fdv.append('id', 0);
     fetch('', { method: 'POST', body: fdv });
-    // Sakrij samo crveni badge (novi), sivi ostaje
     var btn = document.getElementById('rs-pb-' + stavkaId);
     if (btn) {
         var spans = btn.querySelectorAll('span');
-        spans.forEach(function(sp, idx) {
+        spans.forEach(function(sp) {
             if (sp.style.background === 'rgb(229, 57, 53)' || sp.style.background === '#e53935') {
                 sp.style.display = 'none';
             }
