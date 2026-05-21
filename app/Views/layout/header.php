@@ -9,7 +9,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Ekošarna — Admin panel</title>
 <link rel="stylesheet" href="<?= BASE_URL ?>/public/css/admin.css">
-
 </head>
 <body>
 <!-- MOBILNI HEADER -->
@@ -110,9 +109,16 @@
       Imenik
     </a>
 
-    <a href="<?= BASE_URL ?>/?page=obavestenja" class="<?= $active_page === 'obavestenja' ? 'active' : '' ?>">
+    <a href="<?= BASE_URL ?>/?page=obavestenja" class="<?= ($active_page === 'obavestenja' && ($_GET['view'] ?? '') !== 'izvestaji') ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
       Obaveštenja
+    </a>
+
+    <a href="<?= BASE_URL ?>/?page=obavestenja&view=izvestaji"
+       class="<?= ($active_page === 'obavestenja' && ($_GET['view'] ?? '') === 'izvestaji') ? 'active' : '' ?>"
+       style="padding-left:28px;font-size:12px;">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      Izveštaji
     </a>
     <?php endif; ?>
 
@@ -158,7 +164,6 @@ document.addEventListener('DOMContentLoaded', function() {
   });
 });
 
-// ── POLLING: proverava nove poruke svakih 30s ──
 var _poslednjiBroj = -1;
 
 function proveritNovePoruke() {
@@ -166,19 +171,12 @@ function proveritNovePoruke() {
   .then(function(r) { return r.json(); })
   .then(function(d) {
     if (!d.ok) return;
-
     var ukupno = d.ukupno || 0;
-
     var badge = document.getElementById('notif-badge');
     if (badge) {
-      if (ukupno > 0) {
-        badge.textContent = ukupno;
-        badge.style.display = 'inline-block';
-      } else {
-        badge.style.display = 'none';
-      }
+      if (ukupno > 0) { badge.textContent = ukupno; badge.style.display = 'inline-block'; }
+      else { badge.style.display = 'none'; }
     }
-
     if (d.neprocitane_raspored > 0) {
       var fd_r = new FormData();
       fd_r.append('_action', 'raspored_badge_refresh');
@@ -191,14 +189,9 @@ function proveritNovePoruke() {
           var btn = document.getElementById('rs-pb-' + s.id);
           if (!btn) return;
           var spans = btn.querySelectorAll('span');
-          if (spans[0]) {
-            spans[0].textContent = s.poruka_count;
-            spans[0].style.display = s.poruka_count > 0 ? 'inline' : 'none';
-          }
-          if (spans[1]) {
-            spans[1].textContent = s.nove_poruke_count;
-            spans[1].style.display = s.nova_poruka ? 'inline' : 'none';
-          } else if (s.nova_poruka) {
+          if (spans[0]) { spans[0].textContent = s.poruka_count; spans[0].style.display = s.poruka_count > 0 ? 'inline' : 'none'; }
+          if (spans[1]) { spans[1].textContent = s.nove_poruke_count; spans[1].style.display = s.nova_poruka ? 'inline' : 'none'; }
+          else if (s.nova_poruka) {
             var sp = document.createElement('span');
             sp.style.cssText = 'background:#e53935;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:2px;font-weight:700;';
             sp.textContent = s.nove_poruke_count;
@@ -207,67 +200,41 @@ function proveritNovePoruke() {
         });
       }).catch(function(){});
     }
-
     if (_poslednjiBroj >= 0 && ukupno > _poslednjiBroj) {
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
-
       try {
         var ctx = new (window.AudioContext || window.webkitAudioContext)();
-        var osc = ctx.createOscillator();
-        var gain = ctx.createGain();
-        osc.connect(gain);
-        gain.connect(ctx.destination);
+        var osc = ctx.createOscillator(); var gain = ctx.createGain();
+        osc.connect(gain); gain.connect(ctx.destination);
         osc.frequency.value = 880;
         gain.gain.setValueAtTime(0.3, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.3);
-        osc.start(ctx.currentTime);
-        osc.stop(ctx.currentTime + 0.3);
+        osc.start(ctx.currentTime); osc.stop(ctx.currentTime + 0.3);
       } catch(e) {}
-
       prikaziToast('📩 Nova poruka! Imate ' + ukupno + ' neprocitanih.', ukupno);
     }
-
     _poslednjiBroj = ukupno;
-  })
-  .catch(function() {});
+  }).catch(function() {});
 }
 
 function prikaziToast(tekst, broj) {
   var stari = document.getElementById('notif-toast');
   if (stari) stari.remove();
-
   var toast = document.createElement('div');
   toast.id = 'notif-toast';
-  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);' +
-    'background:#1a3a6e;color:#fff;padding:18px 28px;border-radius:14px;font-size:16px;' +
-    'font-weight:600;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);' +
-    'display:flex;align-items:center;gap:16px;min-width:280px;justify-content:space-between;';
-
-  var tekst_div = document.createElement('span');
-  tekst_div.textContent = tekst;
-
-  var ok_btn = document.createElement('button');
-  ok_btn.textContent = 'OK';
-  ok_btn.style.cssText = 'background:#fff;color:#1a3a6e;border:none;border-radius:8px;' +
-    'padding:6px 16px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;';
+  toast.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1a3a6e;color:#fff;padding:18px 28px;border-radius:14px;font-size:16px;font-weight:600;z-index:99999;box-shadow:0 8px 32px rgba(0,0,0,.4);display:flex;align-items:center;gap:16px;min-width:280px;justify-content:space-between;';
+  var tekst_div = document.createElement('span'); tekst_div.textContent = tekst;
+  var ok_btn = document.createElement('button'); ok_btn.textContent = 'OK';
+  ok_btn.style.cssText = 'background:#fff;color:#1a3a6e;border:none;border-radius:8px;padding:6px 16px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;';
   ok_btn.onclick = function() {
     toast.remove();
     var badge = document.getElementById('notif-badge');
-    if (badge && broj > 0) {
-      badge.textContent = broj;
-      badge.style.display = 'inline-block';
-    }
+    if (badge && broj > 0) { badge.textContent = broj; badge.style.display = 'inline-block'; }
   };
-
-  toast.appendChild(tekst_div);
-  toast.appendChild(ok_btn);
+  toast.appendChild(tekst_div); toast.appendChild(ok_btn);
   document.body.appendChild(toast);
-
   var badge = document.getElementById('notif-badge');
-  if (badge && broj > 0) {
-    badge.textContent = broj;
-    badge.style.display = 'inline-block';
-  }
+  if (badge && broj > 0) { badge.textContent = broj; badge.style.display = 'inline-block'; }
 }
 
 proveritNovePoruke();

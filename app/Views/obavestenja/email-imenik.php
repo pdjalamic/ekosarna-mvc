@@ -21,7 +21,6 @@
         <?php else: ?>
         <?php foreach ($firme as $f): ?>
         <div class="ob-firma-blok" data-firma="<?= $f['id'] ?>">
-            <!-- Firma header -->
             <div class="ob-firma-header" onclick="toggleFirma(<?= $f['id'] ?>)">
                 <label class="ob-firma-check" onclick="event.stopPropagation()">
                     <input type="checkbox" class="ob-firma-cb" data-firma="<?= $f['id'] ?>"
@@ -31,8 +30,6 @@
                 <span class="ob-firma-count"><?= count($f['kontakti']) ?></span>
                 <span class="ob-firma-arrow" id="arrow-<?= $f['id'] ?>">▼</span>
             </div>
-
-            <!-- Kontakti -->
             <div class="ob-kontakti-wrap" id="kontakti-<?= $f['id'] ?>" style="display:none;">
                 <?php foreach ($f['kontakti'] as $k): ?>
                 <label class="ob-kontakt-row">
@@ -76,11 +73,19 @@
                 style="border:1.5px solid var(--light2);border-radius:7px;padding:8px 12px;font-size:13px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;"></textarea>
         </div>
 
+        <!-- Attachmenti sa listom -->
         <div class="tim-form-group">
             <label>Prilozi (opciono)</label>
-            <input type="file" id="ob-attachmenti" multiple
-                style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 12px;font-size:13px;background:var(--light);width:100%;box-sizing:border-box;">
-            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Možete selektovati više fajlova odjednom.</div>
+            <label style="display:flex;align-items:center;gap:10px;border:1.5px dashed var(--light2);border-radius:7px;padding:10px 14px;cursor:pointer;background:var(--light);transition:border-color .15s;"
+                onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--light2)'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--blue)" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                <span style="font-size:13px;color:var(--blue);font-weight:600;">Kliknite za izbor fajlova</span>
+                <span style="font-size:11px;color:var(--muted);">— možete izabrati više fajlova</span>
+                <input type="file" id="ob-attachmenti" multiple style="display:none;" onchange="prikaziAttachmente()">
+            </label>
+
+            <!-- Lista attachovanih fajlova -->
+            <div id="ob-file-lista" style="margin-top:8px;display:flex;flex-direction:column;gap:6px;"></div>
         </div>
 
         <div id="ob-err" style="display:none;color:#dc2626;font-size:12px;background:#fef2f2;border-radius:6px;padding:8px 12px;margin-bottom:10px;"></div>
@@ -94,44 +99,114 @@
     </div>
 </div>
 
-</div><!-- end grid -->
+</div>
 
 <style>
 .ob-firma-blok { border-bottom:1px solid var(--light2); }
 .ob-firma-blok:last-child { border-bottom:none; }
-
 .ob-firma-header {
     display:flex;align-items:center;gap:10px;
-    padding:10px 14px;cursor:pointer;
-    background:#fff;transition:background .1s;
-    user-select:none;
+    padding:10px 14px;cursor:pointer;background:#fff;transition:background .1s;user-select:none;
 }
 .ob-firma-header:hover { background:var(--light); }
-
 .ob-firma-check { display:flex;align-items:center;flex-shrink:0; }
 .ob-firma-naziv { flex:1;font-size:13px;font-weight:600;color:var(--text); }
-.ob-firma-count {
-    font-size:11px;background:var(--light2);border-radius:99px;
-    padding:1px 7px;color:var(--muted);flex-shrink:0;
-}
+.ob-firma-count { font-size:11px;background:var(--light2);border-radius:99px;padding:1px 7px;color:var(--muted);flex-shrink:0; }
 .ob-firma-arrow { font-size:10px;color:var(--muted);flex-shrink:0;transition:transform .2s; }
 .ob-firma-arrow.open { transform:rotate(180deg); }
-
 .ob-kontakti-wrap { background:#f8faff;border-top:1px solid var(--light2); }
-
 .ob-kontakt-row {
     display:flex;align-items:center;gap:10px;
-    padding:8px 14px 8px 36px;cursor:pointer;
-    transition:background .1s;
+    padding:8px 14px 8px 36px;cursor:pointer;transition:background .1s;
 }
 .ob-kontakt-row:hover { background:#eff6ff; }
-
 .ob-kontakt-info { display:flex;flex-direction:column;gap:1px; }
 .ob-kontakt-ime   { font-size:12px;font-weight:600;color:var(--text); }
 .ob-kontakt-email { font-size:11px;color:var(--muted); }
+
+.ob-file-row {
+    display:flex;align-items:center;gap:10px;
+    background:var(--light);border:1px solid var(--light2);border-radius:7px;padding:7px 12px;
+}
+.ob-file-naziv { flex:1;font-size:12px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
+.ob-file-size  { font-size:11px;color:var(--muted);flex-shrink:0; }
+.ob-file-ukloni {
+    flex-shrink:0;background:none;border:none;cursor:pointer;
+    color:var(--muted);font-size:16px;line-height:1;padding:0 2px;
+    transition:color .15s;
+}
+.ob-file-ukloni:hover { color:#dc2626; }
 </style>
 
 <script>
+// ── File management ──────────────────────────────────────────
+var _odabraniFiles = []; // DataTransfer simulacija
+
+function prikaziAttachmente() {
+    var input = document.getElementById('ob-attachmenti');
+    // Dodaj nove fajlove u listu (ne zamenjuj)
+    for (var i = 0; i < input.files.length; i++) {
+        var f = input.files[i];
+        // Provjeri duplikat po imenu i veličini
+        var duplikat = _odabraniFiles.some(function(x) { return x.name === f.name && x.size === f.size; });
+        if (!duplikat) _odabraniFiles.push(f);
+    }
+    // Reset input da se može birati isti fajl ponovo
+    input.value = '';
+    renderFileLista();
+}
+
+function renderFileLista() {
+    var lista = document.getElementById('ob-file-lista');
+    lista.innerHTML = '';
+    _odabraniFiles.forEach(function(f, idx) {
+        var row = document.createElement('div');
+        row.className = 'ob-file-row';
+
+        var ikona = document.createElement('span');
+        ikona.style.cssText = 'flex-shrink:0;font-size:16px;';
+        ikona.textContent = fileIkona(f.name);
+
+        var naziv = document.createElement('span');
+        naziv.className = 'ob-file-naziv';
+        naziv.textContent = f.name;
+
+        var size = document.createElement('span');
+        size.className = 'ob-file-size';
+        size.textContent = formatSize(f.size);
+
+        var btn = document.createElement('button');
+        btn.className = 'ob-file-ukloni';
+        btn.innerHTML = '&times;';
+        btn.title = 'Ukloni';
+        btn.onclick = function() { ukloniFile(idx); };
+
+        row.appendChild(ikona);
+        row.appendChild(naziv);
+        row.appendChild(size);
+        row.appendChild(btn);
+        lista.appendChild(row);
+    });
+}
+
+function ukloniFile(idx) {
+    _odabraniFiles.splice(idx, 1);
+    renderFileLista();
+}
+
+function fileIkona(name) {
+    var ext = name.split('.').pop().toLowerCase();
+    var mapa = { pdf:'📄', doc:'📝', docx:'📝', xls:'📊', xlsx:'📊', png:'🖼️', jpg:'🖼️', jpeg:'🖼️', gif:'🖼️', zip:'🗜️', rar:'🗜️' };
+    return mapa[ext] || '📎';
+}
+
+function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// ── Primaoci ─────────────────────────────────────────────────
 function toggleFirma(firmaId) {
     var wrap  = document.getElementById('kontakti-' + firmaId);
     var arrow = document.getElementById('arrow-' + firmaId);
@@ -159,8 +234,7 @@ function azurirajFirmaCb(firmaId) {
 function selektujSve(checked) {
     document.querySelectorAll('.ob-kontakt-cb').forEach(function(cb) { cb.checked = checked; });
     document.querySelectorAll('.ob-firma-cb').forEach(function(cb) {
-        cb.checked = checked;
-        cb.indeterminate = false;
+        cb.checked = checked; cb.indeterminate = false;
     });
     azurirajBrojac();
 }
@@ -170,6 +244,7 @@ function azurirajBrojac() {
     document.getElementById('ob-brojac').textContent = n;
 }
 
+// ── Slanje ───────────────────────────────────────────────────
 function posaljiEmail() {
     var naslov = document.getElementById('ob-naslov').value.trim();
     var tekst  = document.getElementById('ob-tekst').value.trim();
@@ -199,10 +274,10 @@ function posaljiEmail() {
     fd.append('tekst',    tekst);
     fd.append('primaoci', JSON.stringify(primaoci));
 
-    var files = document.getElementById('ob-attachmenti').files;
-    for (var i = 0; i < files.length; i++) {
-        fd.append('attachmenti[]', files[i]);
-    }
+    // Dodaj fajlove iz naše liste
+    _odabraniFiles.forEach(function(f) {
+        fd.append('attachmenti[]', f);
+    });
 
     fetch('', { method: 'POST', body: fd })
     .then(function(r) { return r.json(); })
@@ -212,15 +287,13 @@ function posaljiEmail() {
 
         if (d.ok) {
             var msg = '✅ Poslato ' + d.poslato + ' od ' + d.ukupno + ' poruka.';
-            if (d.greske && d.greske.length) {
-                msg += ' Greške: ' + d.greske.join(', ');
-            }
+            if (d.greske && d.greske.length) msg += ' Greške: ' + d.greske.join(', ');
             ok.textContent    = msg;
             ok.style.display  = 'block';
-            // Reset forme
             document.getElementById('ob-naslov').value = '';
             document.getElementById('ob-tekst').value  = '';
-            document.getElementById('ob-attachmenti').value = '';
+            _odabraniFiles = [];
+            renderFileLista();
             selektujSve(false);
         } else {
             err.textContent   = d.err || 'Greška pri slanju.';

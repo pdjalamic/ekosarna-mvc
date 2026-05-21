@@ -16,6 +16,13 @@ class ObavestenjaController extends \Core\Controller
     {
         Auth::requireKancelarija();
 
+        $view = $_GET['view'] ?? 'email-imenik';
+
+        if ($view === 'izvestaji') {
+            $this->izvestaji();
+            return;
+        }
+
         $stmt = $this->db->query("
             SELECT f.id AS firma_id, f.naziv AS firma_naziv,
                    k.id AS kontakt_id, k.ime AS kontakt_ime, k.email
@@ -45,6 +52,33 @@ class ObavestenjaController extends \Core\Controller
         }
 
         $this->view('obavestenja/email-imenik', compact('firme'));
+    }
+
+    private function izvestaji(): void
+    {
+        $stmt = $this->db->query("
+            SELECT l.*, k.ime AS posiljac_ime
+            FROM obavestenja_log l
+            JOIN admin_korisnici k ON l.korisnik_id = k.id
+            ORDER BY l.created_at DESC
+        ");
+        $logovi = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        foreach ($logovi as &$l) {
+            $stmt2 = $this->db->prepare("
+                SELECT ime, email, firma FROM obavestenja_primaoci WHERE log_id = ?
+            ");
+            $stmt2->execute([$l['id']]);
+            $l['primaoci'] = $stmt2->fetchAll(\PDO::FETCH_ASSOC);
+
+            $stmt3 = $this->db->prepare("
+                SELECT id, naziv, putanja, velicina FROM obavestenja_attachmenti WHERE log_id = ?
+            ");
+            $stmt3->execute([$l['id']]);
+            $l['attachmenti'] = $stmt3->fetchAll(\PDO::FETCH_ASSOC);
+        }
+
+        $this->view('obavestenja/izvestaji', compact('logovi'));
     }
 
     public function ajax(string $action, int $id): void
@@ -81,23 +115,38 @@ class ObavestenjaController extends \Core\Controller
             require_once PHPMAILER_DIR . 'PHPMailer.php';
             require_once PHPMAILER_DIR . 'SMTP.php';
 
-            // Attachmenti
+            // Sačuvaj attachmente na server i pripremi za slanje
+            $upload_dir = UPLOAD_DIR . 'obavestenja/';
             $attachmenti = [];
+
             if (!empty($_FILES['attachmenti'])) {
                 $files = $_FILES['attachmenti'];
                 $count = is_array($files['name']) ? count($files['name']) : 1;
                 for ($i = 0; $i < $count; $i++) {
-                    $tmp  = is_array($files['tmp_name']) ? $files['tmp_name'][$i] : $files['tmp_name'];
-                    $name = is_array($files['name'])     ? $files['name'][$i]     : $files['name'];
-                    $err  = is_array($files['error'])    ? $files['error'][$i]    : $files['error'];
-                    if ($err === UPLOAD_ERR_OK && is_uploaded_file($tmp)) {
-                        $attachmenti[] = ['tmp' => $tmp, 'name' => $name];
+                    $tmp      = is_array($files['tmp_name']) ? $files['tmp_name'][$i] : $files['tmp_name'];
+                    $name     = is_array($files['name'])     ? $files['name'][$i]     : $files['name'];
+                    $err      = is_array($files['error'])    ? $files['error'][$i]    : $files['error'];
+                    $size     = is_array($files['size'])     ? $files['size'][$i]     : $files['size'];
+
+                    if ($err !== UPLOAD_ERR_OK || !is_uploaded_file($tmp)) continue;
+
+                    // Jedinstveno ime fajla
+                    $ext      = pathinfo($name, PATHINFO_EXTENSION);
+                    $safename = date('Ymd_His') . '_' . uniqid() . ($ext ? '.' . $ext : '');
+                    $putanja  = $upload_dir . $safename;
+
+                    if (move_uploaded_file($tmp, $putanja)) {
+                        $attachmenti[] = [
+                            'putanja'  => $putanja,
+                            'naziv'    => $name,
+                            'safename' => $safename,
+                            'velicina' => $size,
+                        ];
                     }
                 }
             }
 
-            // HTML body sa potpisom i logom
-            $logo_cid  = 'logo_ekosarna_ob';
+            $logo_cid   = 'logo_ekosarna_ob';
             $tekst_html = nl2br(htmlspecialchars($tekst, ENT_QUOTES, 'UTF-8'));
 
             $html_body = '<!DOCTYPE html>
@@ -137,16 +186,16 @@ class ObavestenjaController extends \Core\Controller
                     $mail->Body    = $html_body;
                     $mail->AltBody = $alt_body;
 
-                    // Embedded logo
                     $logo_transparent = ROOT . '/EkosarnaMailTransparentNOVI.png';
                     if (file_exists($logo_transparent)) {
-                    $mail->addEmbeddedImage($logo_transparent, $logo_cid, 'EkosarnaMailTransparentNOVI.png', 'base64', 'image/png');
+                        $mail->addEmbeddedImage($logo_transparent, $logo_cid, 'EkosarnaMailTransparentNOVI.png', 'base64', 'image/png');
                     } elseif (file_exists(LOGO_PATH)) {
-                    $mail->addEmbeddedImage(LOGO_PATH, $logo_cid, 'mika_logo_1.png', 'base64', 'image/png');
+                        $mail->addEmbeddedImage(LOGO_PATH, $logo_cid, 'mika_logo_1.png', 'base64', 'image/png');
                     }
 
+                    // Priloži fajlove sa servera
                     foreach ($attachmenti as $a) {
-                        $mail->addAttachment($a['tmp'], $a['name']);
+                        $mail->addAttachment($a['putanja'], $a['naziv']);
                     }
 
                     $mail->send();
@@ -168,6 +217,34 @@ class ObavestenjaController extends \Core\Controller
 
                 } catch (\PHPMailer\PHPMailer\Exception $e) {
                     $greske[] = $k['email'] . ': ' . $mail->ErrorInfo;
+                }
+            }
+
+            // Logovaj slanje
+            if ($poslato > 0) {
+                $logStmt = $this->db->prepare("
+                    INSERT INTO obavestenja_log (korisnik_id, naslov, tekst, poslato, ukupno)
+                    VALUES (?, ?, ?, ?, ?)
+                ");
+                $logStmt->execute([Auth::id(), $naslov, $tekst, $poslato, count($kontakti)]);
+                $log_id = $this->db->lastInsertId();
+
+                $primStmt = $this->db->prepare("
+                    INSERT INTO obavestenja_primaoci (log_id, ime, email, firma) VALUES (?, ?, ?, ?)
+                ");
+                foreach ($kontakti as $k) {
+                    $primStmt->execute([$log_id, $k['ime'], $k['email'], $k['firma']]);
+                }
+
+                // Logovaj attachmente
+                if (!empty($attachmenti)) {
+                    $attStmt = $this->db->prepare("
+                        INSERT INTO obavestenja_attachmenti (log_id, naziv, putanja, velicina)
+                        VALUES (?, ?, ?, ?)
+                    ");
+                    foreach ($attachmenti as $a) {
+                        $attStmt->execute([$log_id, $a['naziv'], $a['safename'], $a['velicina']]);
+                    }
                 }
             }
 
