@@ -50,20 +50,21 @@ class Router
         }
 
         match ($page) {
-            'kontakt'    => (new \Controllers\KontaktController())->index(),
-            'tim'        => (new \Controllers\TimController())->index(),
-            'imenik'     => (new \Controllers\ImenikController())->index(),
-            'zadaci'     => (new \Controllers\ZadaciController())->index(),
-            'poruke'     => (new \Controllers\PorukeController())->dispatch(),
-            'gradilista' => (new \Controllers\GradilistaController())->index(),
-            'raspored'   => (new \Controllers\RasporedController())->index(),
-            'danas'      => (new \Controllers\DanasController())->index(),
-            'hr'         => isset($_GET['action']) && $_GET['action'] === 'karton'
-                                ? (new \Controllers\HrController())->karton()
-                                : (new \Controllers\HrController())->index(),
-            default      => Auth::isElektricar()
-                                ? (new \Controllers\DanasController())->index()
-                                : (new \Controllers\RasporedController())->index(),
+            'kontakt'      => (new \Controllers\KontaktController())->index(),
+            'tim'          => (new \Controllers\TimController())->index(),
+            'imenik'       => (new \Controllers\ImenikController())->index(),
+            'zadaci'       => (new \Controllers\ZadaciController())->index(),
+            'poruke'       => (new \Controllers\PorukeController())->dispatch(),
+            'gradilista'   => (new \Controllers\GradilistaController())->index(),
+            'raspored'     => (new \Controllers\RasporedController())->index(),
+            'danas'        => (new \Controllers\DanasController())->index(),
+            'obavestenja'  => (new \Controllers\ObavestenjaController())->index(),
+            'hr'           => isset($_GET['action']) && $_GET['action'] === 'karton'
+                                  ? (new \Controllers\HrController())->karton()
+                                  : (new \Controllers\HrController())->index(),
+            default        => Auth::isElektricar()
+                                  ? (new \Controllers\DanasController())->index()
+                                  : (new \Controllers\RasporedController())->index(),
         };
     }
 
@@ -118,6 +119,13 @@ class Router
             // Danas (električar)
             if (str_starts_with($action, 'danas_')) {
                 (new \Controllers\DanasController())->ajax($action, $id);
+                return;
+            }
+
+            // Obaveštenja
+            if (str_starts_with($action, 'obavestenja_')) {
+                Auth::requireKancelarija();
+                (new \Controllers\ObavestenjaController())->ajax($action, $id);
                 return;
             }
 

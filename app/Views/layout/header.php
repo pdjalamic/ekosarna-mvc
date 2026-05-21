@@ -109,6 +109,11 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       Imenik
     </a>
+
+    <a href="<?= BASE_URL ?>/?page=obavestenja" class="<?= $active_page === 'obavestenja' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+      Obaveštenja
+    </a>
     <?php endif; ?>
 
     <?php endif; ?>
@@ -130,7 +135,6 @@
              style="height:32px;width:auto;display:block;mix-blend-mode:lighten;opacity:.9;">
       </div>
       <?php endif; ?>
-
     </div>
   </div>
   <div class="main">
@@ -165,7 +169,6 @@ function proveritNovePoruke() {
 
     var ukupno = d.ukupno || 0;
 
-    // Ažuriraj badge u meniju
     var badge = document.getElementById('notif-badge');
     if (badge) {
       if (ukupno > 0) {
@@ -176,7 +179,6 @@ function proveritNovePoruke() {
       }
     }
 
-    // Osvezi badge-ove na stavkama rasporeda
     if (d.neprocitane_raspored > 0) {
       var fd_r = new FormData();
       fd_r.append('_action', 'raspored_badge_refresh');
@@ -206,12 +208,9 @@ function proveritNovePoruke() {
       }).catch(function(){});
     }
 
-    // Ako se broj povećao — obavesti korisnika
     if (_poslednjiBroj >= 0 && ukupno > _poslednjiBroj) {
-      // Vibracija na mobilnom
       if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
 
-      // Zvuk (kratak beep)
       try {
         var ctx = new (window.AudioContext || window.webkitAudioContext)();
         var osc = ctx.createOscillator();
@@ -225,7 +224,6 @@ function proveritNovePoruke() {
         osc.stop(ctx.currentTime + 0.3);
       } catch(e) {}
 
-      // Toast obaveštenje
       prikaziToast('📩 Nova poruka! Imate ' + ukupno + ' neprocitanih.', ukupno);
     }
 
@@ -235,7 +233,6 @@ function proveritNovePoruke() {
 }
 
 function prikaziToast(tekst, broj) {
-  // Ukloni stari toast ako postoji
   var stari = document.getElementById('notif-toast');
   if (stari) stari.remove();
 
@@ -255,7 +252,6 @@ function prikaziToast(tekst, broj) {
     'padding:6px 16px;font-size:14px;font-weight:700;cursor:pointer;flex-shrink:0;';
   ok_btn.onclick = function() {
     toast.remove();
-    // Prikaži crveni badge
     var badge = document.getElementById('notif-badge');
     if (badge && broj > 0) {
       badge.textContent = broj;
@@ -267,7 +263,6 @@ function prikaziToast(tekst, broj) {
   toast.appendChild(ok_btn);
   document.body.appendChild(toast);
 
-  // Ažuriraj badge sa brojem novih
   var badge = document.getElementById('notif-badge');
   if (badge && broj > 0) {
     badge.textContent = broj;
@@ -275,7 +270,6 @@ function prikaziToast(tekst, broj) {
   }
 }
 
-// Pokreni odmah i onda svakih 10s
 proveritNovePoruke();
 setInterval(proveritNovePoruke, 10000);
 </script>

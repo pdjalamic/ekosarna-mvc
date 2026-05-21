@@ -141,9 +141,10 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             <td style="font-size:12px;vertical-align:middle;">
                 <?php foreach ($s['radnici'] as $r): ?>
                 <div class="rs-el-radnik-red">
-                    <span class="rs-el-ime-txt">
-                        <?= (isset($s['odgovoran_id']) && $s['odgovoran_id'] == $r['radnik_id']) ? '📦' : '👷' ?>
-                        <?= h($r['ime']) ?>
+                    <?php $jeOdg = (isset($s['odgovoran_id']) && $s['odgovoran_id'] == $r['radnik_id']); ?>
+                    <span class="rs-el-ime-txt" <?= $jeOdg ? 'style="background:#fef3c7;border-radius:4px;padding:1px 6px;color:#92400e;font-weight:700;"' : '' ?>>
+                    <?= $jeOdg ? '📦' : '👷' ?>
+                    <?= h($r['ime']) ?>
                     </span>
                     <?php if ($r['vreme_od'] || $r['vreme_do']): ?>
                     <span class="rs-el-vreme-txt">
