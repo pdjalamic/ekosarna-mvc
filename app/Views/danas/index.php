@@ -1,7 +1,7 @@
 <?php
 $dani_nazivi = ['Ned','Pon','Uto','Sri','Čet','Pet','Sub'];
 $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
-$gradilista_json = json_encode($gradilista);
+$gradilista_json = json_encode($gradilista ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?: '[]';
 ?>
 
 <div class="topbar-admin">
@@ -204,6 +204,7 @@ var _danasStavkaId        = 0;
 var _danasPorukeInterval  = null;
 var _danasAktivniStavkaId = 0;
 var _slobodanUnos         = false; // true = slobodan unos, false = vezan za stavku
+var _danasAiData = null;
 var _gradilista           = <?= $gradilista_json ?>;
 
 // ── Slobodan unos ────────────────────────────────────────────
@@ -384,8 +385,9 @@ function danasAiPrikaziPreview(tip, data) {
 
     html += '<div class="danas-ai-akcije">';
     html += '<button onclick="danasAiIzmeni(\''+tip+'\')" class="mail-cancel-btn">✏️ Izmeni</button>';
-    html += '<button onclick="danasAiSacuvaj(\''+tip+'\','+JSON.stringify(data).replace(/</g,'\\u003c')+')" class="btn-primary">✅ Potvrdi</button>';
+    html += '<button onclick="danasAiSacuvaj(\''+tip+'\')" class="btn-primary">✅ Potvrdi</button>';
     html += '</div></div>';
+    _danasAiData = data;
     wrap.innerHTML = html;
 }
 
@@ -394,7 +396,9 @@ function danasAiIzmeni(tip) {
     document.getElementById(tip==='vreme'?'danas-vreme-input-wrap':'danas-mat-input-wrap').style.display = 'block';
 }
 
-function danasAiSacuvaj(tip, data) {
+function danasAiSacuvaj(tip) {
+    var data = _danasAiData;
+    if (!data) { alert('Nema podataka za čuvanje.'); return; }
     var btn = event.target;
     btn.disabled = true; btn.textContent = '⏳ Čuvam...';
 
@@ -423,7 +427,10 @@ function danasAiSacuvaj(tip, data) {
             alert('Greška: '+(d.err||'Nepoznata'));
         }
     })
-    .catch(()=>{ btn.disabled=false; btn.textContent='✅ Potvrdi'; alert('Mrežna greška.'); });
+    .catch((e) => {
+    btn.disabled=false; btn.textContent='✅ Potvrdi';
+    alert('Greška: ' + e.message);
+});
 }
 
 function zatvoriSveModale() {

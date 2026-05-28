@@ -352,7 +352,7 @@ PROMPT;
                     $check = $this->db->prepare("SELECT odgovoran_id FROM raspored_stavke WHERE id=?");
                     $check->execute([$stavka_id]);
                     $odgovoran_id = (int)$check->fetchColumn();
-                    if ($odgovoran_id !== $uid) $this->json(['ok' => false, 'err' => 'Niste odgovorni za unos materijala.']);
+                    if ((int)$odgovoran_id !== (int)$uid) $this->json(['ok' => false, 'err' => 'Niste odgovorni za unos materijala.']);
 
                     if (!$grad_id && !$grad_naziv) {
                         $gStmt = $this->db->prepare("SELECT rs.gradiliste_id, g.naziv FROM raspored_stavke rs LEFT JOIN gradilista g ON rs.gradiliste_id=g.id WHERE rs.id=?");
