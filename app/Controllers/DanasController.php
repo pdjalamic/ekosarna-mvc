@@ -91,7 +91,12 @@ while ($dodato < 4) {
             $dani[$d] = $stavke;
         }
 
-        $this->view('danas/index', compact('dani', 'datum', 'datumi', 'uid'));
+        // Gradilišta za slobodan unos
+        $gradilista = $this->db->query("
+            SELECT id, naziv FROM gradilista WHERE status='aktivno' ORDER BY naziv ASC
+        ")->fetchAll(\PDO::FETCH_ASSOC);
+
+        $this->view('danas/index', compact('dani', 'datum', 'datumi', 'uid', 'gradilista'));
     }
 
     private function najblizjiDanSaRasporedom(int $uid): string
@@ -133,6 +138,7 @@ while ($dodato < 4) {
         $uid = Auth::id();
 
         switch ($action) {
+
             case 'danas_poruke_get':
                 $stavka_id = (int)($_POST['stavka_id'] ?? $id);
                 $stmt = $this->db->prepare("
@@ -191,7 +197,7 @@ while ($dodato < 4) {
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je prazan.']);
 
                 $apiKey = $_ENV['ANTHROPIC_API_KEY'] ?? '';
-                if (!$apiKey) $this->json(['ok' => false, 'err' => 'ANTHROPIC_API_KEY nije postavljen u .env']);
+                if (!$apiKey) $this->json(['ok' => false, 'err' => 'ANTHROPIC_API_KEY nije postavljen.']);
 
                 if ($tip === 'vreme') {
                     $systemPrompt = <<<PROMPT
@@ -209,24 +215,23 @@ Pravila:
 - Odgovaraj SAMO validnim JSON-om, ništa više
 PROMPT;
                 } else {
-    // Dohvati katalog iz baze
-    $katalogStmt = $this->db->query("
-        SELECT naziv, jm FROM katalog_materijala WHERE aktivan = 1 ORDER BY naziv ASC
-    ");
-    $katalogArtikli = $katalogStmt->fetchAll(\PDO::FETCH_ASSOC);
-    $katalogTekst = implode("\n", array_map(
-        fn($a) => "- {$a['naziv']} ({$a['jm']})",
-        $katalogArtikli
-    ));
+                    // Dohvati katalog mastera
+                    $katalogStmt = $this->db->query("
+                        SELECT naziv, jm FROM katalog_materijala
+                        WHERE aktivan=1 AND master_id IS NULL
+                        ORDER BY naziv ASC
+                    ");
+                    $katalogArtikli = $katalogStmt->fetchAll(\PDO::FETCH_ASSOC);
+                    $katalogTekst = implode("\n", array_map(fn($a) => "- {$a['naziv']} ({$a['jm']})", $katalogArtikli));
 
-    $systemPrompt = <<<PROMPT
+                    $systemPrompt = <<<PROMPT
 Ti si asistent koji parsira utrošeni materijal sa gradilišta, opisan slobodnim tekstom na srpskom jeziku.
 Izvuci listu potrošenog materijala i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
 
 Format odgovora:
 {"stavke":[{"naziv":"Kabl N2XH 5x1,5","kolicina":69,"jm":"m"},{"naziv":"Rebrasto crevo HF 16/11 sivo","kolicina":130,"jm":"m"}]}
 
-Katalog poznatih artikala (koristi TAČNE nazive iz ovog kataloga kada se poklapaju):
+Katalog poznatih artikala (koristi TAČNE nazive iz kataloga kada se poklapaju):
 $katalogTekst
 
 Pravila:
@@ -236,7 +241,7 @@ Pravila:
 - jm: m, Kom, kg, m2, kpl, l, pak
 - Odgovaraj SAMO validnim JSON-om, ništa više
 PROMPT;
-}
+                }
 
                 $payload = json_encode([
                     'model'      => 'claude-haiku-4-5-20251001',
@@ -281,58 +286,123 @@ PROMPT;
                 break;
 
             case 'danas_upisi_vreme':
-                $stavka_id = (int)($_POST['stavka_id'] ?? 0);
-                $meta_json = $_POST['meta'] ?? '';
-                if (!$stavka_id || !$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+                $stavka_id   = (int)($_POST['stavka_id']    ?? 0) ?: null;
+                $meta_json   = $_POST['meta']                ?? '';
+                $grad_id     = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
+                $grad_naziv  = trim($_POST['gradiliste_naziv'] ?? '');
 
-                $check = $this->db->prepare("SELECT 1 FROM raspored_radnici WHERE stavka_id=? AND radnik_id=?");
-                $check->execute([$stavka_id, $uid]);
-                if (!$check->fetch()) $this->json(['ok' => false, 'err' => 'Nemate pristup ovoj stavci.']);
+                if (!$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+
+                // Ako je vezan za stavku — proveri pristup
+                if ($stavka_id) {
+                    $check = $this->db->prepare("SELECT 1 FROM raspored_radnici WHERE stavka_id=? AND radnik_id=?");
+                    $check->execute([$stavka_id, $uid]);
+                    if (!$check->fetch()) $this->json(['ok' => false, 'err' => 'Nemate pristup ovoj stavci.']);
+
+                    // Dohvati gradilište iz stavke ako nije zadato
+                    if (!$grad_id && !$grad_naziv) {
+                        $gStmt = $this->db->prepare("SELECT rs.gradiliste_id, g.naziv FROM raspored_stavke rs LEFT JOIN gradilista g ON rs.gradiliste_id=g.id WHERE rs.id=?");
+                        $gStmt->execute([$stavka_id]);
+                        $gRow = $gStmt->fetch(\PDO::FETCH_ASSOC);
+                        if ($gRow) {
+                            $grad_id    = $gRow['gradiliste_id'];
+                            $grad_naziv = $gRow['naziv'] ?? '';
+                        }
+                    }
+                }
 
                 $meta = json_decode($meta_json, true);
                 if (!$meta) $this->json(['ok' => false, 'err' => 'Neispravan JSON.']);
 
                 $stmt = $this->db->prepare("
                     INSERT INTO raspored_vreme
-                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, meta)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, meta, gradiliste_id, gradiliste_naziv)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
                     $stavka_id, $uid, date('Y-m-d'),
-                    $meta['vreme_od'] ?? null,
-                    $meta['vreme_do'] ?? null,
+                    $meta['vreme_od']    ?? null,
+                    $meta['vreme_do']    ?? null,
                     isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : null,
-                    $meta['napomena'] ?? null,
-                    $meta_json
+                    $meta['napomena']    ?? null,
+                    $meta_json,
+                    $grad_id,
+                    $grad_naziv
                 ]);
+
+                // Sačuvaj preferencu gradilišta
+                if ($grad_id || $grad_naziv) {
+                    $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_id', (string)($grad_id ?: ''));
+                    $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_naziv', $grad_naziv);
+                }
+
                 $this->json(['ok' => true]);
                 break;
 
             case 'danas_upisi_materijal':
-                $stavka_id = (int)($_POST['stavka_id'] ?? 0);
-                $meta_json = $_POST['meta'] ?? '';
-                if (!$stavka_id || !$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+                $stavka_id   = (int)($_POST['stavka_id']     ?? 0) ?: null;
+                $meta_json   = $_POST['meta']                 ?? '';
+                $grad_id     = (int)($_POST['gradiliste_id']  ?? 0) ?: null;
+                $grad_naziv  = trim($_POST['gradiliste_naziv'] ?? '');
 
-                $check = $this->db->prepare("SELECT odgovoran_id FROM raspored_stavke WHERE id=?");
-                $check->execute([$stavka_id]);
-                $odgovoran_id = (int)$check->fetchColumn();
-                if ($odgovoran_id !== $uid) $this->json(['ok' => false, 'err' => 'Niste odgovorni za unos materijala.']);
+                if (!$meta_json) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+
+                // Ako je vezan za stavku — proveri odgovornost
+                if ($stavka_id) {
+                    $check = $this->db->prepare("SELECT odgovoran_id FROM raspored_stavke WHERE id=?");
+                    $check->execute([$stavka_id]);
+                    $odgovoran_id = (int)$check->fetchColumn();
+                    if ($odgovoran_id !== $uid) $this->json(['ok' => false, 'err' => 'Niste odgovorni za unos materijala.']);
+
+                    if (!$grad_id && !$grad_naziv) {
+                        $gStmt = $this->db->prepare("SELECT rs.gradiliste_id, g.naziv FROM raspored_stavke rs LEFT JOIN gradilista g ON rs.gradiliste_id=g.id WHERE rs.id=?");
+                        $gStmt->execute([$stavka_id]);
+                        $gRow = $gStmt->fetch(\PDO::FETCH_ASSOC);
+                        if ($gRow) {
+                            $grad_id    = $gRow['gradiliste_id'];
+                            $grad_naziv = $gRow['naziv'] ?? '';
+                        }
+                    }
+                }
 
                 $meta = json_decode($meta_json, true);
                 if (!$meta || empty($meta['stavke'])) $this->json(['ok' => false, 'err' => 'Nema stavki materijala.']);
 
                 $datum = date('Y-m-d');
                 $stmt  = $this->db->prepare("
-                    INSERT INTO raspored_materijal (stavka_id, radnik_id, datum, naziv, kolicina, jm)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO raspored_materijal (stavka_id, radnik_id, datum, naziv, kolicina, jm, gradiliste_id, gradiliste_naziv)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ");
+
                 foreach ($meta['stavke'] as $s) {
-                    $naziv    = trim($s['naziv'] ?? '');
+                    $naziv    = trim($s['naziv']    ?? '');
                     $kolicina = (float)($s['kolicina'] ?? 0);
-                    $jm       = trim($s['jm'] ?? 'kom');
+                    $jm       = trim($s['jm']       ?? 'Kom');
                     if (!$naziv || $kolicina <= 0) continue;
-                    $stmt->execute([$stavka_id, $uid, $datum, $naziv, $kolicina, $jm]);
+
+                    // Mapiraj na katalog
+                    $katStmt = $this->db->prepare("
+                        SELECT id FROM katalog_materijala
+                        WHERE aktivan=1 AND master_id IS NULL
+                          AND REPLACE(LOWER(naziv),' ','') = REPLACE(LOWER(?),' ','')
+                        LIMIT 1
+                    ");
+                    $katStmt->execute([$naziv]);
+                    if (!$katStmt->fetchColumn()) {
+                        // Dodaj u katalog ako ne postoji
+                        $this->db->prepare("INSERT INTO katalog_materijala (kataloski_broj, naziv, jm, dobavljac) VALUES ('', ?, ?, 'interni')")
+                            ->execute([$naziv, $jm]);
+                    }
+
+                    $stmt->execute([$stavka_id, $uid, $datum, $naziv, $kolicina, $jm, $grad_id, $grad_naziv]);
                 }
+
+                // Sačuvaj preferencu
+                if ($grad_id || $grad_naziv) {
+                    $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_id', (string)($grad_id ?: ''));
+                    $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_naziv', $grad_naziv);
+                }
+
                 $this->json(['ok' => true]);
                 break;
 
@@ -353,9 +423,34 @@ PROMPT;
                 $this->json(['ok' => true, 'unosi' => $unosi]);
                 break;
 
+            case 'danas_sacuvaj_preferencu':
+                $kljuc   = trim($_POST['kljuc']   ?? '');
+                $vrednost = trim($_POST['vrednost'] ?? '');
+                if (!$kljuc) $this->json(['ok' => false]);
+                $this->sacuvajPreferencu($uid, $kljuc, $vrednost);
+                $this->json(['ok' => true]);
+                break;
+
+            case 'danas_ucitaj_preferencu':
+                $kljuc = trim($_POST['kljuc'] ?? '');
+                $stmt = $this->db->prepare("SELECT vrednost FROM korisnik_preference WHERE korisnik_id=? AND kljuc=?");
+                $stmt->execute([$uid, $kljuc]);
+                $vrednost = $stmt->fetchColumn();
+                $this->json(['ok' => true, 'vrednost' => $vrednost ?: null]);
+                break;
+
             default:
                 $this->json(['ok' => false, 'err' => 'Nepoznata akcija.']);
         }
+    }
+
+    private function sacuvajPreferencu(int $uid, string $kljuc, string $vrednost): void
+    {
+        $this->db->prepare("
+            INSERT INTO korisnik_preference (korisnik_id, kljuc, vrednost)
+            VALUES (?, ?, ?)
+            ON DUPLICATE KEY UPDATE vrednost = ?, updated_at = NOW()
+        ")->execute([$uid, $kljuc, $vrednost, $vrednost]);
     }
 
     private function notifikuj(int $primalac_id, string $posiljalac, string $poruka): void

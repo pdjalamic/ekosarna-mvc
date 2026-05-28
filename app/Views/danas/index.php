@@ -1,14 +1,14 @@
 <?php
-// $uid dolazi iz DanasController compact('dani','datum','datumi','uid')
 $dani_nazivi = ['Ned','Pon','Uto','Sri','Čet','Pet','Sub'];
 $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
+$gradilista_json = json_encode($gradilista);
 ?>
 
 <div class="topbar-admin">
     <div class="page-title">📅 Moj raspored</div>
 </div>
 
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
     <a href="?page=danas&datum=<?= date('Y-m-d', strtotime($datum . ' -1 day')) ?>" class="btn-sm">←</a>
     <form method="GET" style="display:flex;align-items:center;gap:6px;">
         <input type="hidden" name="page" value="danas">
@@ -22,6 +22,18 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
     <?php endif; ?>
 </div>
 
+<!-- Slobodan unos -->
+<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;">
+    <button onclick="openSlobodanUnos('vreme')" class="btn-sm"
+        style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;font-size:12px;">
+        🕐 Slobodan unos vremena
+    </button>
+    <button onclick="openSlobodanUnos('materijal')" class="btn-sm"
+        style="background:#fffbeb;color:#b45309;border-color:#fde68a;font-size:12px;">
+        📦 Slobodan unos materijala
+    </button>
+</div>
+
 <div style="display:flex;flex-direction:column;gap:14px;">
 <?php foreach ($datumi as $idx => $d):
     $stavke    = $dani[$d] ?? [];
@@ -31,21 +43,15 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
     $boja_dana = $jeIzabran ? '#1a3a6e' : ($jeDanas ? '#2563eb' : '#94a3b8');
 ?>
 <div style="border-radius:14px;border:2px solid <?= $boja_dana ?><?= $jeIzabran ? '' : '44' ?>;overflow:hidden;">
-
     <div style="background:<?= $boja_dana ?><?= $jeIzabran ? '' : '18' ?>;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
         <div>
-            <span style="font-size:14px;font-weight:700;color:<?= $jeIzabran ? '#fff' : $boja_dana ?>;">
-                <?= $dani_puni[$dow] ?>
-            </span>
-            <span style="font-size:12px;color:<?= $jeIzabran ? '#ffffffaa' : '#64748b' ?>;margin-left:8px;">
-                <?= date('d.m.Y', strtotime($d)) ?>
-            </span>
+            <span style="font-size:14px;font-weight:700;color:<?= $jeIzabran ? '#fff' : $boja_dana ?>;"><?= $dani_puni[$dow] ?></span>
+            <span style="font-size:12px;color:<?= $jeIzabran ? '#ffffffaa' : '#64748b' ?>;margin-left:8px;"><?= date('d.m.Y', strtotime($d)) ?></span>
         </div>
         <?php if ($jeDanas): ?>
         <span style="background:#fff;color:#2563eb;border-radius:20px;font-size:10px;font-weight:700;padding:2px 10px;">DANAS</span>
         <?php endif; ?>
     </div>
-
     <div style="padding:10px 12px;background:#fff;display:flex;flex-direction:column;gap:8px;">
     <?php if (empty($stavke)): ?>
         <p style="color:var(--muted);font-size:13px;font-style:italic;padding:4px 0;margin:0;">Nema zadataka</p>
@@ -64,48 +70,30 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
                     </div>
                     <?php endif; ?>
                     <?php if ($s['gradiliste_naziv']): ?>
-                    <div style="font-size:14px;font-weight:700;color:var(--blue);">
-                        🏗️ <?= h($s['gradiliste_naziv']) ?>
-                    </div>
+                    <div style="font-size:14px;font-weight:700;color:var(--blue);">🏗️ <?= h($s['gradiliste_naziv']) ?></div>
                     <?php endif; ?>
                 </div>
-
                 <div style="display:flex;gap:5px;flex-shrink:0;">
-                    <!-- Poruke -->
                     <button type="button" class="btn-sm" id="dp-btn-<?= $s['id'] ?>"
                         onclick="openDanasThread(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
                         title="Poruke" style="position:relative;">
                         💬<?php if ($s['poruka_count'] > 0): ?><span style="background:#6b7280;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:3px;font-weight:700;"><?= $s['poruka_count'] ?></span><?php endif; ?><?php if (!empty($s['nova_poruka'])): ?><span style="background:#e53935;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:2px;font-weight:700;"><?= $s['nove_poruke_count'] ?></span><?php endif; ?>
                     </button>
-
-                    <!-- Upiši vreme (svi na stavci) -->
                     <button type="button" class="btn-sm" title="Upiši vreme"
                         onclick="openDanasVreme(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
-                        style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">
-                        🕐
-                    </button>
-
-                    <!-- Upiši materijal (samo odgovoran) -->
+                        style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">🕐</button>
                     <?php if ($jeOdgovoran): ?>
                     <button type="button" class="btn-sm" title="Upiši materijal"
                         onclick="openDanasMaterijal(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
-                        style="background:#fffbeb;color:#b45309;border-color:#fde68a;">
-                        📦
-                    </button>
+                        style="background:#fffbeb;color:#b45309;border-color:#fde68a;">📦</button>
                     <?php endif; ?>
                 </div>
             </div>
-
             <?php if ($s['opis']): ?>
-            <div style="font-size:13px;color:#333;line-height:1.5;background:#f8faff;border-radius:6px;padding:8px 10px;">
-                <?= nl2br(h($s['opis'])) ?>
-            </div>
+            <div style="font-size:13px;color:#333;line-height:1.5;background:#f8faff;border-radius:6px;padding:8px 10px;"><?= nl2br(h($s['opis'])) ?></div>
             <?php endif; ?>
-
             <?php if ($jeOdgovoran): ?>
-            <div style="margin-top:6px;font-size:11px;color:#b45309;background:#fffbeb;border-radius:5px;padding:3px 9px;display:inline-block;">
-                📦 Ti si odgovoran za unos materijala
-            </div>
+            <div style="margin-top:6px;font-size:11px;color:#b45309;background:#fffbeb;border-radius:5px;padding:3px 9px;display:inline-block;">📦 Ti si odgovoran za unos materijala</div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -136,6 +124,22 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
         <button onclick="zatvoriSveModale()" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 id="danas-vreme-naslov" style="font-size:15px;font-weight:700;color:#1d4ed8;margin-bottom:4px;padding-right:32px;">🕐 Upiši vreme</h3>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Napiši slobodnim tekstom koliko si radio i šta.</p>
+
+        <!-- Gradilište (samo za slobodan unos) -->
+        <div id="vreme-gradiliste-wrap" style="display:none;margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Gradilište</label>
+            <select id="vreme-gradiliste-sel" onchange="gradilisteSelectChange('vreme')"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);margin-bottom:6px;">
+                <option value="">— Izaberi gradilište —</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>" data-naziv="<?= h($g['naziv']) ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+                <option value="rucno">— Upiši ručno —</option>
+            </select>
+            <input type="text" id="vreme-gradiliste-rucno" placeholder="Naziv gradilišta..."
+                style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
+        </div>
+
         <div id="danas-vreme-input-wrap">
             <textarea id="danas-vreme-tekst" rows="4"
                 placeholder="npr. od 7 do 15h, kabliranje rasvete na spratu"
@@ -155,6 +159,22 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
         <button onclick="zatvoriSveModale()" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 id="danas-mat-naslov" style="font-size:15px;font-weight:700;color:#b45309;margin-bottom:4px;padding-right:32px;">📦 Upiši materijal</h3>
         <p style="font-size:12px;color:var(--muted);margin:0 0 12px;">Napiši slobodnim tekstom šta je potrošeno.</p>
+
+        <!-- Gradilište (samo za slobodan unos) -->
+        <div id="mat-gradiliste-wrap" style="display:none;margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Gradilište</label>
+            <select id="mat-gradiliste-sel" onchange="gradilisteSelectChange('mat')"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);margin-bottom:6px;">
+                <option value="">— Izaberi gradilište —</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>" data-naziv="<?= h($g['naziv']) ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+                <option value="rucno">— Upiši ručno —</option>
+            </select>
+            <input type="text" id="mat-gradiliste-rucno" placeholder="Naziv gradilišta..."
+                style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
+        </div>
+
         <div id="danas-mat-input-wrap">
             <textarea id="danas-mat-tekst" rows="5"
                 placeholder="npr. kabal 3x1.5 n2xh 69m, kabal 5x1.5 n2xh 125m, buzir hf f16 130m"
@@ -183,43 +203,96 @@ $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Su
 var _danasStavkaId        = 0;
 var _danasPorukeInterval  = null;
 var _danasAktivniStavkaId = 0;
+var _slobodanUnos         = false; // true = slobodan unos, false = vezan za stavku
+var _gradilista           = <?= $gradilista_json ?>;
 
+// ── Slobodan unos ────────────────────────────────────────────
+function openSlobodanUnos(tip) {
+    _slobodanUnos         = true;
+    _danasAktivniStavkaId = 0;
+
+    var wrapId   = tip === 'vreme' ? 'vreme-gradiliste-wrap' : 'mat-gradiliste-wrap';
+    var modalId  = tip === 'vreme' ? 'danas-vreme-modal'     : 'danas-mat-modal';
+    var naslovId = tip === 'vreme' ? 'danas-vreme-naslov'     : 'danas-mat-naslov';
+    var tekstId  = tip === 'vreme' ? 'danas-vreme-tekst'      : 'danas-mat-tekst';
+    var prevId   = tip === 'vreme' ? 'danas-vreme-preview'    : 'danas-mat-preview';
+    var wrapInpId= tip === 'vreme' ? 'danas-vreme-input-wrap' : 'danas-mat-input-wrap';
+
+    document.getElementById(wrapId).style.display   = 'block';
+    document.getElementById(naslovId).textContent   = tip === 'vreme' ? '🕐 Slobodan unos vremena' : '📦 Slobodan unos materijala';
+    document.getElementById(tekstId).value          = '';
+    document.getElementById(prevId).style.display   = 'none';
+    document.getElementById(prevId).innerHTML       = '';
+    document.getElementById(wrapInpId).style.display = 'block';
+    document.getElementById(modalId).style.display  = 'flex';
+
+    // Učitaj poslednje gradilište
+    ucitajGradilistePreferencu(tip);
+}
+
+function ucitajGradilistePreferencu(tip) {
+    var fd = new FormData();
+    fd.append('_action', 'danas_ucitaj_preferencu');
+    fd.append('kljuc', 'slobodan_gradiliste_id');
+    fd.append('id', 0);
+    fetch('', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok && d.vrednost) {
+            var selId = tip === 'vreme' ? 'vreme-gradiliste-sel' : 'mat-gradiliste-sel';
+            var sel = document.getElementById(selId);
+            if (sel) sel.value = d.vrednost;
+        }
+    }).catch(function(){});
+}
+
+function gradilisteSelectChange(tip) {
+    var selId    = tip === 'vreme' ? 'vreme-gradiliste-sel'   : 'mat-gradiliste-sel';
+    var rucnoId  = tip === 'vreme' ? 'vreme-gradiliste-rucno' : 'mat-gradiliste-rucno';
+    var sel = document.getElementById(selId);
+    document.getElementById(rucnoId).style.display = sel.value === 'rucno' ? 'block' : 'none';
+}
+
+function getGradilisteZaUnos(tip) {
+    if (!_slobodanUnos) return { id: 0, naziv: '' };
+    var selId   = tip === 'vreme' ? 'vreme-gradiliste-sel'   : 'mat-gradiliste-sel';
+    var rucnoId = tip === 'vreme' ? 'vreme-gradiliste-rucno' : 'mat-gradiliste-rucno';
+    var sel = document.getElementById(selId);
+    if (!sel) return { id: 0, naziv: '' };
+    if (sel.value === 'rucno') {
+        return { id: 0, naziv: document.getElementById(rucnoId).value.trim() };
+    }
+    if (sel.value) {
+        var opt = sel.options[sel.selectedIndex];
+        return { id: parseInt(sel.value), naziv: opt.dataset.naziv || opt.textContent };
+    }
+    return { id: 0, naziv: '' };
+}
+
+// ── Poruke ───────────────────────────────────────────────────
 function openDanasThread(stavkaId, naslov) {
+    _slobodanUnos  = false;
     _danasStavkaId = stavkaId;
     document.getElementById('danas-thread-naslov').textContent = naslov;
     document.getElementById('danas-thread-input').value = '';
     document.getElementById('danas-thread').style.display = 'flex';
     ucitajDanasPoruke(stavkaId);
-    var fdv = new FormData();
-    fdv.append('_action', 'raspored_oznaci_vidjeno');
-    fdv.append('stavka_id', stavkaId);
-    fdv.append('id', 0);
-    fetch('', { method: 'POST', body: fdv });
-    var btn = document.getElementById('dp-btn-' + stavkaId);
-    if (btn) { var spans = btn.querySelectorAll('span'); if (spans.length > 1) spans[1].style.display = 'none'; }
+    var fdv = new FormData(); fdv.append('_action','raspored_oznaci_vidjeno'); fdv.append('stavka_id',stavkaId); fdv.append('id',0);
+    fetch('', { method:'POST', body:fdv });
     clearInterval(_danasPorukeInterval);
     _danasPorukeInterval = setInterval(function() { ucitajDanasPoruke(stavkaId); }, 10000);
 }
 
 function ucitajDanasPoruke(stavkaId) {
-    var fd = new FormData();
-    fd.append('_action', 'danas_poruke_get');
-    fd.append('stavka_id', stavkaId);
-    fd.append('id', 0);
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(d => {
+    var fd = new FormData(); fd.append('_action','danas_poruke_get'); fd.append('stavka_id',stavkaId); fd.append('id',0);
+    fetch('', { method:'POST', body:fd }).then(r=>r.json()).then(d => {
         var wrap = document.getElementById('danas-thread-poruke');
         wrap.innerHTML = '';
-        if (!d.poruke || d.poruke.length === 0) {
-            wrap.innerHTML = '<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0;">Nema poruka.</p>';
-            return;
-        }
+        if (!d.poruke || !d.poruke.length) { wrap.innerHTML='<p style="color:var(--muted);font-size:13px;text-align:center;padding:20px 0;">Nema poruka.</p>'; return; }
         d.poruke.forEach(function(p) {
             var div = document.createElement('div');
-            div.style.cssText = 'padding:9px 13px;border-radius:10px;font-size:14px;max-width:85%;line-height:1.5;' +
-                (p.moja ? 'background:var(--blue);color:#fff;margin-left:auto;' : 'background:var(--light);color:var(--text);');
-            div.innerHTML = '<strong style="font-size:11px;opacity:.75;display:block;margin-bottom:2px;">' + p.autor + '</strong>' + p.sadrzaj.replace(/\n/g,'<br>');
+            div.style.cssText='padding:9px 13px;border-radius:10px;font-size:14px;max-width:85%;line-height:1.5;'+(p.moja?'background:var(--blue);color:#fff;margin-left:auto;':'background:var(--light);color:var(--text);');
+            div.innerHTML='<strong style="font-size:11px;opacity:.75;display:block;margin-bottom:2px;">'+p.autor+'</strong>'+p.sadrzaj.replace(/\n/g,'<br>');
             wrap.appendChild(div);
         });
         wrap.scrollTop = wrap.scrollHeight;
@@ -229,18 +302,15 @@ function ucitajDanasPoruke(stavkaId) {
 function posaljiDanasPoruku() {
     var sadrzaj = document.getElementById('danas-thread-input').value.trim();
     if (!sadrzaj) return;
-    var fd = new FormData();
-    fd.append('_action', 'danas_poruka_add');
-    fd.append('stavka_id', _danasStavkaId);
-    fd.append('id', 0);
-    fd.append('sadrzaj', sadrzaj);
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(d => { if (d.ok) { document.getElementById('danas-thread-input').value = ''; ucitajDanasPoruke(_danasStavkaId); } });
+    var fd = new FormData(); fd.append('_action','danas_poruka_add'); fd.append('stavka_id',_danasStavkaId); fd.append('id',0); fd.append('sadrzaj',sadrzaj);
+    fetch('', { method:'POST', body:fd }).then(r=>r.json()).then(d => { if(d.ok) { document.getElementById('danas-thread-input').value=''; ucitajDanasPoruke(_danasStavkaId); } });
 }
 
+// ── Vreme / Materijal (vezan za stavku) ──────────────────────
 function openDanasVreme(stavkaId, naslov) {
+    _slobodanUnos = false;
     _danasAktivniStavkaId = stavkaId;
+    document.getElementById('vreme-gradiliste-wrap').style.display = 'none';
     document.getElementById('danas-vreme-naslov').textContent = '🕐 ' + naslov;
     document.getElementById('danas-vreme-tekst').value = '';
     document.getElementById('danas-vreme-preview').style.display = 'none';
@@ -250,7 +320,9 @@ function openDanasVreme(stavkaId, naslov) {
 }
 
 function openDanasMaterijal(stavkaId, naslov) {
+    _slobodanUnos = false;
     _danasAktivniStavkaId = stavkaId;
+    document.getElementById('mat-gradiliste-wrap').style.display = 'none';
     document.getElementById('danas-mat-naslov').textContent = '📦 ' + naslov;
     document.getElementById('danas-mat-tekst').value = '';
     document.getElementById('danas-mat-preview').style.display = 'none';
@@ -259,13 +331,13 @@ function openDanasMaterijal(stavkaId, naslov) {
     document.getElementById('danas-mat-modal').style.display = 'flex';
 }
 
+// ── AI Parse ─────────────────────────────────────────────────
 function danasAiAnaliziraj(tip) {
-    var tekst = document.getElementById(tip === 'vreme' ? 'danas-vreme-tekst' : 'danas-mat-tekst').value.trim();
+    var tekst = document.getElementById(tip==='vreme'?'danas-vreme-tekst':'danas-mat-tekst').value.trim();
     if (!tekst) { alert('Unesi tekst pre analize.'); return; }
 
-    var btn = document.getElementById(tip === 'vreme' ? 'btn-vreme-analiziraj' : 'btn-mat-analiziraj');
-    btn.disabled = true;
-    btn.textContent = '⏳ Analiziram...';
+    var btn = document.getElementById(tip==='vreme'?'btn-vreme-analiziraj':'btn-mat-analiziraj');
+    btn.disabled = true; btn.textContent = '⏳ Analiziram...';
 
     var fd = new FormData();
     fd.append('_action', 'danas_ai_parse');
@@ -274,112 +346,102 @@ function danasAiAnaliziraj(tip) {
     fd.append('tip', tip);
     fd.append('id', 0);
 
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
+    fetch('', { method:'POST', body:fd })
+    .then(r=>r.json())
     .then(d => {
-        btn.disabled = false;
-        btn.textContent = '🤖 Analiziraj';
-        if (!d.ok) { alert('Greška: ' + (d.err || 'Nepoznata')); return; }
+        btn.disabled = false; btn.textContent = '🤖 Analiziraj';
+        if (!d.ok) { alert('Greška: '+(d.err||'Nepoznata')); return; }
         danasAiPrikaziPreview(tip, d.data);
     })
-    .catch(() => {
-        btn.disabled = false;
-        btn.textContent = '🤖 Analiziraj';
-        alert('Mrežna greška, pokušaj ponovo.');
-    });
+    .catch(() => { btn.disabled=false; btn.textContent='🤖 Analiziraj'; alert('Mrežna greška.'); });
 }
 
 function danasAiPrikaziPreview(tip, data) {
-    document.getElementById(tip === 'vreme' ? 'danas-vreme-input-wrap' : 'danas-mat-input-wrap').style.display = 'none';
-    var wrap = document.getElementById(tip === 'vreme' ? 'danas-vreme-preview' : 'danas-mat-preview');
+    document.getElementById(tip==='vreme'?'danas-vreme-input-wrap':'danas-mat-input-wrap').style.display = 'none';
+    var wrap = document.getElementById(tip==='vreme'?'danas-vreme-preview':'danas-mat-preview');
     wrap.style.display = 'block';
 
     var html = '<div class="danas-ai-preview">';
-    html += '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">' + (tip === 'vreme' ? '🕐 Proveri vreme' : '📦 Proveri materijal') + '</div>';
+    html += '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">'+(tip==='vreme'?'🕐 Proveri vreme':'📦 Proveri materijal')+'</div>';
 
     if (tip === 'vreme') {
         if (data.vreme_od || data.ukupno_sati) {
             html += '<div class="danas-ai-row"><span class="danas-ai-label">Vreme</span>';
-            html += '<span>' + esc(data.vreme_od||'?') + '–' + esc(data.vreme_do||'?');
-            if (data.ukupno_sati) html += ' <strong>(' + data.ukupno_sati + 'h)</strong>';
+            html += '<span>'+esc(data.vreme_od||'?')+'–'+esc(data.vreme_do||'?');
+            if (data.ukupno_sati) html += ' <strong>('+data.ukupno_sati+'h)</strong>';
             html += '</span></div>';
         }
-        if (data.napomena) {
-            html += '<div class="danas-ai-row"><span class="danas-ai-label">Napomena</span><span>' + esc(data.napomena) + '</span></div>';
-        }
+        if (data.napomena) html += '<div class="danas-ai-row"><span class="danas-ai-label">Napomena</span><span>'+esc(data.napomena)+'</span></div>';
     } else {
         if (data.stavke && data.stavke.length) {
             html += '<div class="danas-ai-row danas-ai-col"><span class="danas-ai-label">Materijal</span><div style="margin-top:4px;">';
             data.stavke.forEach(function(s) {
-                html += '<span class="danas-ai-tag">' + esc(s.naziv) + ' <strong>' + s.kolicina + ' ' + esc(s.jm) + '</strong></span>';
+                html += '<span class="danas-ai-tag">'+esc(s.naziv)+' <strong>'+s.kolicina+' '+esc(s.jm)+'</strong></span>';
             });
             html += '</div></div>';
         }
     }
 
     html += '<div class="danas-ai-akcije">';
-    html += '<button onclick="danasAiIzmeni(\'' + tip + '\')" class="mail-cancel-btn">✏️ Izmeni</button>';
-    html += '<button onclick="danasAiSacuvaj(\'' + tip + '\',' + JSON.stringify(data).replace(/</g,'\\u003c') + ')" class="btn-primary">✅ Potvrdi</button>';
+    html += '<button onclick="danasAiIzmeni(\''+tip+'\')" class="mail-cancel-btn">✏️ Izmeni</button>';
+    html += '<button onclick="danasAiSacuvaj(\''+tip+'\','+JSON.stringify(data).replace(/</g,'\\u003c')+')" class="btn-primary">✅ Potvrdi</button>';
     html += '</div></div>';
-
     wrap.innerHTML = html;
 }
 
 function danasAiIzmeni(tip) {
-    document.getElementById(tip === 'vreme' ? 'danas-vreme-preview' : 'danas-mat-preview').style.display = 'none';
-    document.getElementById(tip === 'vreme' ? 'danas-vreme-input-wrap' : 'danas-mat-input-wrap').style.display = 'block';
+    document.getElementById(tip==='vreme'?'danas-vreme-preview':'danas-mat-preview').style.display = 'none';
+    document.getElementById(tip==='vreme'?'danas-vreme-input-wrap':'danas-mat-input-wrap').style.display = 'block';
 }
 
 function danasAiSacuvaj(tip, data) {
     var btn = event.target;
-    btn.disabled = true;
-    btn.textContent = '⏳ Čuvam...';
+    btn.disabled = true; btn.textContent = '⏳ Čuvam...';
+
+    var grad = _slobodanUnos ? getGradilisteZaUnos(tip) : { id: 0, naziv: '' };
 
     var fd = new FormData();
-    fd.append('_action', tip === 'vreme' ? 'danas_upisi_vreme' : 'danas_upisi_materijal');
+    fd.append('_action', tip==='vreme'?'danas_upisi_vreme':'danas_upisi_materijal');
     fd.append('stavka_id', _danasAktivniStavkaId);
     fd.append('meta', JSON.stringify(data));
+    fd.append('gradiliste_id', grad.id);
+    fd.append('gradiliste_naziv', grad.naziv);
     fd.append('id', 0);
 
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
+    fetch('', { method:'POST', body:fd })
+    .then(r=>r.json())
     .then(d => {
         if (d.ok) {
             zatvoriSveModale();
             var toast = document.createElement('div');
-            toast.textContent = tip === 'vreme' ? 'Vreme upisano ✅' : 'Materijal upisan ✅';
-            toast.style.cssText = 'position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#059669;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:700;z-index:99999;box-shadow:0 4px 16px #0003;';
+            toast.textContent = tip==='vreme'?'Vreme upisano ✅':'Materijal upisan ✅';
+            toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#059669;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:700;z-index:99999;';
             document.body.appendChild(toast);
-            setTimeout(function() { toast.remove(); }, 2500);
+            setTimeout(function(){toast.remove();},2500);
         } else {
-            btn.disabled = false;
-            btn.textContent = '✅ Potvrdi';
-            alert('Greška: ' + (d.err || 'Nepoznata'));
+            btn.disabled=false; btn.textContent='✅ Potvrdi';
+            alert('Greška: '+(d.err||'Nepoznata'));
         }
     })
-    .catch(() => {
-        btn.disabled = false;
-        btn.textContent = '✅ Potvrdi';
-        alert('Mrežna greška, pokušaj ponovo.');
-    });
+    .catch(()=>{ btn.disabled=false; btn.textContent='✅ Potvrdi'; alert('Mrežna greška.'); });
 }
 
 function zatvoriSveModale() {
-    ['danas-thread','danas-vreme-modal','danas-mat-modal'].forEach(function(id) {
-        document.getElementById(id).style.display = 'none';
+    ['danas-thread','danas-vreme-modal','danas-mat-modal'].forEach(function(id){
+        document.getElementById(id).style.display='none';
     });
     clearInterval(_danasPorukeInterval);
+    _slobodanUnos = false;
 }
 
 function esc(str) {
-    if (!str && str !== 0) return '';
+    if (!str && str!==0) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
 setInterval(function() {
-    var otvoren = ['danas-thread','danas-vreme-modal','danas-mat-modal'].some(function(id) {
-        var el = document.getElementById(id);
-        return el && el.style.display !== 'none';
+    var otvoren = ['danas-thread','danas-vreme-modal','danas-mat-modal'].some(function(id){
+        var el=document.getElementById(id); return el&&el.style.display!=='none';
     });
     if (!otvoren) location.reload();
 }, 25000);
