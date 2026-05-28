@@ -43,28 +43,35 @@ class Router
             exit;
         }
 
-        // Električar može samo danas i poruke
+        // Električar može samo danas, poruke i hr
         if (Auth::isElektricar() && !in_array($page, ['danas', 'poruke', 'hr'])) {
             header('Location: ' . BASE_URL . '/?page=danas');
             exit;
         }
 
+        // Magacin, Imenik i Obaveštenja — samo Administrator
+        if (in_array($page, ['magacin', 'imenik', 'obavestenja']) && !Auth::isAdmin()) {
+            header('Location: ' . BASE_URL . '/');
+            exit;
+        }
+
         match ($page) {
-            'kontakt'      => (new \Controllers\KontaktController())->index(),
-            'tim'          => (new \Controllers\TimController())->index(),
-            'imenik'       => (new \Controllers\ImenikController())->index(),
-            'zadaci'       => (new \Controllers\ZadaciController())->index(),
-            'poruke'       => (new \Controllers\PorukeController())->dispatch(),
-            'gradilista'   => (new \Controllers\GradilistaController())->index(),
-            'raspored'     => (new \Controllers\RasporedController())->index(),
-            'danas'        => (new \Controllers\DanasController())->index(),
-            'obavestenja'  => (new \Controllers\ObavestenjaController())->index(),
-            'hr'           => isset($_GET['action']) && $_GET['action'] === 'karton'
-                                  ? (new \Controllers\HrController())->karton()
-                                  : (new \Controllers\HrController())->index(),
-            default        => Auth::isElektricar()
-                                  ? (new \Controllers\DanasController())->index()
-                                  : (new \Controllers\RasporedController())->index(),
+            'kontakt'     => (new \Controllers\KontaktController())->index(),
+            'tim'         => (new \Controllers\TimController())->index(),
+            'imenik'      => (new \Controllers\ImenikController())->index(),
+            'zadaci'      => (new \Controllers\ZadaciController())->index(),
+            'poruke'      => (new \Controllers\PorukeController())->dispatch(),
+            'gradilista'  => (new \Controllers\GradilistaController())->index(),
+            'raspored'    => (new \Controllers\RasporedController())->index(),
+            'danas'       => (new \Controllers\DanasController())->index(),
+            'obavestenja' => (new \Controllers\ObavestenjaController())->index(),
+            'magacin'     => (new \Controllers\MagacinController())->index(),
+            'hr'          => isset($_GET['action']) && $_GET['action'] === 'karton'
+                                 ? (new \Controllers\HrController())->karton()
+                                 : (new \Controllers\HrController())->index(),
+            default       => Auth::isElektricar()
+                                 ? (new \Controllers\DanasController())->index()
+                                 : (new \Controllers\RasporedController())->index(),
         };
     }
 
@@ -93,7 +100,7 @@ class Router
 
             // Imenik
             if (str_starts_with($action, 'imenik_')) {
-                if (!Auth::canImenik()) exit(json_encode(['ok' => false, 'err' => 'Nemate pristup.']));
+                if (!Auth::isAdmin()) exit(json_encode(['ok' => false, 'err' => 'Nemate pristup.']));
                 (new \Controllers\ImenikController())->ajax($action, $id);
                 return;
             }
@@ -124,8 +131,15 @@ class Router
 
             // Obaveštenja
             if (str_starts_with($action, 'obavestenja_')) {
-                Auth::requireKancelarija();
+                Auth::requireAdmin();
                 (new \Controllers\ObavestenjaController())->ajax($action, $id);
+                return;
+            }
+
+            // Magacin
+            if (str_starts_with($action, 'magacin_')) {
+                Auth::requireAdmin();
+                (new \Controllers\MagacinController())->ajax($action, $id);
                 return;
             }
 

@@ -11,7 +11,6 @@
 <link rel="stylesheet" href="<?= BASE_URL ?>/public/css/admin.css">
 </head>
 <body>
-<!-- MOBILNI HEADER -->
 <div class="mob-header">
   <div class="mob-logo">Ekošarna<span>.</span></div>
   <button class="mob-burger" onclick="toggleSidebar()" aria-label="Meni">
@@ -30,23 +29,23 @@
     ?>
 
     <?php if ($je_elektricar): ?>
+    <!-- ── ELEKTRICAR meni ── -->
     <a href="<?= BASE_URL ?>/?page=danas" class="<?= $active_page === 'danas' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
       Raspored
     </a>
-
     <a href="<?= BASE_URL ?>/?page=poruke" class="<?= $active_page === 'poruke' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
       Poruke
       <span class="badge" id="notif-badge" style="<?= $neprocitane_poruke > 0 ? '' : 'display:none' ?>"><?= $neprocitane_poruke ?></span>
     </a>
-
     <a href="<?= BASE_URL ?>/?page=hr" class="<?= $active_page === 'hr' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Moj profil
     </a>
 
     <?php else: ?>
+    <!-- ── ADMIN / OPERATER meni ── -->
     <?php $neprocitano_count = \Models\KontaktForma::getUnreadCount(); ?>
 
     <a href="<?= BASE_URL ?>/?page=kontakt" class="<?= $active_page === 'kontakt' ? 'active' : '' ?>">
@@ -94,19 +93,23 @@
       Zadaci
       <?php
         try {
-          $z_open = (int)\Core\Database::get()->query(
-            "SELECT COUNT(*) FROM interni_zadaci WHERE status != 'zavrseno'"
-          )->fetchColumn();
+          $z_open = (int)\Core\Database::get()->query("SELECT COUNT(*) FROM interni_zadaci WHERE status != 'zavrseno'")->fetchColumn();
           if ($z_open > 0) echo '<span class="badge">' . $z_open . '</span>';
         } catch(\Exception $e) {}
       ?>
     </a>
 
-    <?php if ($can_imenik): ?>
+    <?php if ($is_admin): ?>
     <hr class="sidebar-sep">
+
     <a href="<?= BASE_URL ?>/?page=imenik" class="<?= $active_page === 'imenik' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       Imenik
+    </a>
+
+    <a href="<?= BASE_URL ?>/?page=magacin" class="<?= $active_page === 'magacin' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+      Magacin
     </a>
 
     <a href="<?= BASE_URL ?>/?page=obavestenja" class="<?= ($active_page === 'obavestenja' && ($_GET['view'] ?? '') !== 'izvestaji') ? 'active' : '' ?>">
@@ -158,9 +161,7 @@ function closeSidebar() {
 }
 document.addEventListener('DOMContentLoaded', function() {
   document.querySelectorAll('.sidebar a').forEach(function(a) {
-    a.addEventListener('click', function() {
-      if (window.innerWidth <= 768) closeSidebar();
-    });
+    a.addEventListener('click', function() { if (window.innerWidth <= 768) closeSidebar(); });
   });
 });
 

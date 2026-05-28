@@ -209,19 +209,34 @@ Pravila:
 - Odgovaraj SAMO validnim JSON-om, ništa više
 PROMPT;
                 } else {
-                    $systemPrompt = <<<PROMPT
+    // Dohvati katalog iz baze
+    $katalogStmt = $this->db->query("
+        SELECT naziv, jm FROM katalog_materijala WHERE aktivan = 1 ORDER BY naziv ASC
+    ");
+    $katalogArtikli = $katalogStmt->fetchAll(\PDO::FETCH_ASSOC);
+    $katalogTekst = implode("\n", array_map(
+        fn($a) => "- {$a['naziv']} ({$a['jm']})",
+        $katalogArtikli
+    ));
+
+    $systemPrompt = <<<PROMPT
 Ti si asistent koji parsira utrošeni materijal sa gradilišta, opisan slobodnim tekstom na srpskom jeziku.
 Izvuci listu potrošenog materijala i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
 
 Format odgovora:
-{"stavke":[{"naziv":"Kabal 3x1.5 N2XH","kolicina":69,"jm":"m"},{"naziv":"Buzir HF F16","kolicina":130,"jm":"m"}]}
+{"stavke":[{"naziv":"Kabl N2XH 5x1,5","kolicina":69,"jm":"m"},{"naziv":"Rebrasto crevo HF 16/11 sivo","kolicina":130,"jm":"m"}]}
+
+Katalog poznatih artikala (koristi TAČNE nazive iz ovog kataloga kada se poklapaju):
+$katalogTekst
 
 Pravila:
-- naziv materijala što precizniji i standardizovaniji
-- jm: m, kom, kg, m2, kpl, l, pak
+- Ako artikal postoji u katalogu, koristi TAČNO taj naziv i jedinicu mere
+- Ako artikal nije u katalogu, napiši što precizniji naziv
+- kolicina je broj (bez jedinice mere)
+- jm: m, Kom, kg, m2, kpl, l, pak
 - Odgovaraj SAMO validnim JSON-om, ništa više
 PROMPT;
-                }
+}
 
                 $payload = json_encode([
                     'model'      => 'claude-haiku-4-5-20251001',
