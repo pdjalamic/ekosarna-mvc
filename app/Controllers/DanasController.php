@@ -205,20 +205,27 @@ Ti si asistent koji parsira dnevne izveštaje električara na srpskom jeziku.
 Iz slobodnog teksta izvuci vreme rada i opis izvedenih radova.
 Vrati ISKLJUČIVO validan JSON bez ikakvog dodatnog teksta, bez markdown oznaka i bez objašnjenja.
 
-Format odgovora:
-{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena_original":"tačan unos radnika bez ikakvih izmena","napomena":"profesionalno preformulisan opis radova"}
+Format odgovora kada postoje SEGMENTI (više vrsta posla sa različitim trajanjem):
+{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena_original":"tačan unos radnika bez izmena","segmenti":[{"opis_original":"Prepravke oko ozvicenja zbog promene projekta","opis":"Prepravke oko ozvučenja usled izmene projekta","sati":2,"prepravka":true},{"opis_original":"pripremanje trasa za kabliranje rasvete i samo kabliranje rasvete","opis":"Priprema kablovskih trasa i kabliranje rasvete","sati":7,"prepravka":false}]}
+
+Format odgovora kada nema segmenata (jedan tip posla):
+{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena_original":"tačan unos radnika bez izmena","napomena":"profesionalno preformulisan opis radova"}
 
 Pravila:
+- Odgovaraj isključivo na srpskom jeziku, koristeći srpsku terminologiju (npr. "kablovski" a ne "kabelski", "razvodni" a ne "distributivni")
 - vreme_od i vreme_do moraju biti u formatu HH:MM (24h)
-- Prepoznaj različite formate unosa vremena (npr. "7-16", "07 do 16", "7h-16h", "od 7 do 16", "7h do 16")
-- ukupno_sati = razlika između vreme_do i vreme_od kao decimalni broj (npr. 8.5 za 8h30min)
+- Prepoznaj različite formate unosa vremena (npr. "7-16", "07 do 16", "7h-16h", "od 7 do 16")
+- ukupno_sati = ukupna razlika između vreme_do i vreme_od kao decimalni broj
 - Ako vreme nije moguće pouzdano prepoznati, vrati null za vreme_od, vreme_do i ukupno_sati
 - Ako je vreme_do < vreme_od, pretpostavi prelazak preko ponoći
-- napomena_original: prepiši DOSLOVNO ceo tekst radnika osim sata i minuta — ne ispravljati greške, ne menjati ništa, čuvati original kao dokaz
-- Za polje napomena: interno ispravi sve slovne i pravopisne greške iz originalnog teksta, pa tek onda preformuliši na profesionalan način pogodan za investitora
-- napomena mora biti tehnički precizna — ne dodavati radove, materijale ili detalje koji nisu navedeni
-- napomena mora obuhvatiti SVE navedene radove iz originalnog teksta
-- Ako opis radova ne postoji, izostavi oba napomena polja
+- napomena_original: prepiši DOSLOVNO ceo tekst radnika osim sata i minuta — ne ispravljati greške, ne menjati ništa
+- Ako tekst sadrži VIŠE VRSTA POSLA sa navedenim trajanjem (npr. "2h prepravke, ostatak kabliranje"), koristi format sa segmentima
+- U segmentima: opis_original je doslovan tekst tog dela, opis je profesionalna verzija sa ispravljenim greškama
+- prepravka: true ako segment opisuje prepravke, izmene projekta, korekcije, popravke grešaka — inače false
+- Zbir sati u segmentima treba da odgovara ukupno_sati
+- Ako nema jasnih segmenata, koristi format bez segmenata sa poljem napomena
+- Za polje napomena (bez segmenata): interno ispravi greške pa preformuliši profesionalno
+- Ne dodavati radove ili detalje koji nisu navedeni
 - Odgovaraj ISKLJUČIVO validnim JSON-om
 PROMPT;
                 } else {
@@ -242,6 +249,7 @@ Katalog poznatih artikala (koristi ISKLJUČIVO tačne nazive iz kataloga kada po
 $katalogTekst
 
 Pravila:
+- Odgovaraj isključivo na srpskom jeziku, koristeći srpsku terminologiju (npr. "kablovski" a ne "kabelski", "razvodni" a ne "distributivni")
 - Prepoznaj artikal čak i ako je napisan skraćeno, sa slovnim greškama ili drugačijim redosledom reči
 - Ako postoji potpuno ili približno podudaranje sa katalogom, OBAVEZNO koristi TAČAN naziv i jedinicu mere iz kataloga
 - Nikada ne pretpostavljati tip ili oznaku materijala (npr. N2XH, PP-Y, PP00) ako nije jasno navedena ili prepoznata iz kataloga
@@ -332,16 +340,24 @@ PROMPT;
 
                 $stmt = $this->db->prepare("
                     INSERT INTO raspored_vreme
-                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, napomena_original, meta, gradiliste_id, gradiliste_naziv)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, napomena_original, segmenti, meta, gradiliste_id, gradiliste_naziv)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
+
+                // Ako ima segmenata, napomena je konkatenacija opisa svih segmenata
+                $napomena = $meta['napomena'] ?? null;
+                if (!$napomena && !empty($meta['segmenti'])) {
+                    $napomena = implode('; ', array_map(fn($s) => $s['opis'] ?? '', $meta['segmenti']));
+                }
+
                 $stmt->execute([
                     $stavka_id, $uid, date('Y-m-d'),
-                    $meta['vreme_od']         ?? null,
-                    $meta['vreme_do']         ?? null,
+                    $meta['vreme_od']          ?? null,
+                    $meta['vreme_do']          ?? null,
                     isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : null,
-                    $meta['napomena']         ?? null,
+                    $napomena,
                     $meta['napomena_original'] ?? null,
+                    !empty($meta['segmenti']) ? json_encode($meta['segmenti'], JSON_UNESCAPED_UNICODE) : null,
                     $meta_json,
                     $grad_id,
                     $grad_naziv

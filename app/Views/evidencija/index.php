@@ -76,46 +76,99 @@
 <table class="rs-tabela">
     <thead>
         <tr>
-            <th style="width:36px;text-align:center;">#</th>
-            <th style="width:100px;">Datum</th>
-            <th style="width:160px;">Ime i prezime</th>
+            <th style="width:40px;text-align:center;">#</th>
+            <th style="width:110px;">Datum</th>
+            <th style="width:170px;">Ime i prezime</th>
             <th>Gradilište / Zadatak</th>
-            <th style="width:100px;text-align:center;">Vreme</th>
-            <th style="width:60px;text-align:center;">Sati</th>
+            <th style="width:110px;text-align:center;">Vreme</th>
+            <th style="width:65px;text-align:center;">Sati</th>
             <th>Opis rada</th>
             <?php if ($is_admin): ?><th style="width:80px;text-align:right;"></th><?php endif; ?>
         </tr>
     </thead>
     <tbody>
-    <?php foreach ($vreme_unosi as $i => $v): ?>
-    <tr class="rs-red">
-        <td style="text-align:center;font-size:11px;color:var(--muted);"><?= $i + 1 ?></td>
-        <td style="font-size:12px;color:var(--muted);"><?= date('d.m.Y', strtotime($v['datum'])) ?></td>
-        <td style="font-size:13px;font-weight:600;"><?= h($v['radnik_ime']) ?></td>
-        <td style="font-size:12px;">
+    <?php
+    $redni_broj = 0;
+    foreach ($vreme_unosi as $i => $v):
+        $segmenti = null;
+        if (!empty($v['segmenti'])) {
+            $segmenti = is_string($v['segmenti']) ? json_decode($v['segmenti'], true) : $v['segmenti'];
+        }
+
+        if ($segmenti && count($segmenti) > 1):
+            // Više segmenata — svaki kao poseban red
+            foreach ($segmenti as $si => $seg):
+                $redni_broj++;
+                $isPrepravka = !empty($seg['prepravka']);
+                $rowBg = $isPrepravka ? 'background:#fff7ed;' : '';
+    ?>
+    <tr class="rs-red" style="<?= $rowBg ?>">
+        <td style="text-align:center;font-size:13px;color:var(--muted);"><?= $redni_broj ?></td>
+        <td style="font-size:14px;color:var(--muted);"><?= date('d.m.Y', strtotime($v['datum'])) ?></td>
+        <td style="font-size:14px;font-weight:600;"><?= h($v['radnik_ime']) ?></td>
+        <td style="font-size:14px;">
             <?php if ($v['gradiliste_naziv']): ?>
             <span style="color:var(--blue);">🏗️ <?= h($v['gradiliste_naziv']) ?></span>
             <?php endif; ?>
             <?php if ($v['zadatak_opis']): ?>
-            <div style="color:var(--muted);font-size:11px;margin-top:2px;"><?= h(mb_substr($v['zadatak_opis'], 0, 60)) ?><?= mb_strlen($v['zadatak_opis']) > 60 ? '...' : '' ?></div>
+            <div style="color:var(--muted);font-size:12px;margin-top:2px;"><?= h(mb_substr($v['zadatak_opis'], 0, 60)) ?><?= mb_strlen($v['zadatak_opis']) > 60 ? '...' : '' ?></div>
             <?php endif; ?>
         </td>
-        <td style="text-align:center;font-size:12px;">
+        <td style="text-align:center;font-size:14px;">
+    <?= $v['vreme_od'] ? substr($v['vreme_od'],0,5) : '?' ?>–<?= $v['vreme_do'] ? substr($v['vreme_do'],0,5) : '?' ?>
+</td>
+        <td style="text-align:center;font-weight:700;font-size:15px;color:<?= $isPrepravka ? '#c2410c' : 'var(--blue)' ?>;">
+            <?= number_format($seg['sati'] ?? 0, 1, ',', '.') ?>
+        </td>
+        <td style="font-size:14px;">
+            <?php if ($isPrepravka): ?>
+            <span style="font-size:11px;background:#fed7aa;color:#c2410c;border-radius:3px;padding:1px 6px;margin-right:6px;font-weight:700;">PREPRAVKA</span>
+            <strong style="color:#c2410c;"><?= h($seg['opis'] ?? '') ?></strong>
+            <?php else: ?>
+            <span style="color:#1a3a6e;font-weight:600;"><?= h($seg['opis'] ?? '') ?></span>
+            <?php endif; ?>
+        </td>
+        <?php if ($is_admin): ?>
+        <td style="text-align:right;white-space:nowrap;">
+            <?php if ($si === 0): ?>
+            <button class="btn-sm" onclick="openIzmeniVreme(<?= $v['id'] ?>, '<?= h(addslashes($v['datum'])) ?>', '<?= h(addslashes($v['vreme_od'] ?? '')) ?>', '<?= h(addslashes($v['vreme_do'] ?? '')) ?>', <?= (float)($v['ukupno_sati'] ?? 0) ?>, '', '<?= h(addslashes(is_string($v['segmenti']) ? $v['segmenti'] : json_encode($v['segmenti']))) ?>')" title="Izmeni">✏️</button>
+            <button class="btn-sm del" onclick="obrisiVreme(<?= $v['id'] ?>)" title="Obriši" style="margin-left:4px;">🗑</button>
+            <?php endif; ?>
+        </td>
+        <?php endif; ?>
+    </tr>
+    <?php
+            endforeach;
+        else:
+            // Jedan red — normalan prikaz
+            $redni_broj++;
+    ?>
+    <tr class="rs-red">
+        <td style="text-align:center;font-size:13px;color:var(--muted);"><?= $redni_broj ?></td>
+        <td style="font-size:14px;color:var(--muted);"><?= date('d.m.Y', strtotime($v['datum'])) ?></td>
+        <td style="font-size:14px;font-weight:600;"><?= h($v['radnik_ime']) ?></td>
+        <td style="font-size:14px;">
+            <?php if ($v['gradiliste_naziv']): ?>
+            <span style="color:var(--blue);">🏗️ <?= h($v['gradiliste_naziv']) ?></span>
+            <?php endif; ?>
+            <?php if ($v['zadatak_opis']): ?>
+            <div style="color:var(--muted);font-size:12px;margin-top:2px;"><?= h(mb_substr($v['zadatak_opis'], 0, 60)) ?><?= mb_strlen($v['zadatak_opis']) > 60 ? '...' : '' ?></div>
+            <?php endif; ?>
+        </td>
+        <td style="text-align:center;font-size:14px;">
             <?= $v['vreme_od'] ? substr($v['vreme_od'],0,5) : '?' ?>–<?= $v['vreme_do'] ? substr($v['vreme_do'],0,5) : '?' ?>
         </td>
-        <td style="text-align:center;font-weight:700;font-size:13px;color:var(--blue);">
+        <td style="text-align:center;font-weight:700;font-size:15px;color:var(--blue);">
             <?= $v['ukupno_sati'] ? number_format($v['ukupno_sati'], 1, ',', '.') : '—' ?>
         </td>
-        <td style="font-size:12px;">
+        <td style="font-size:14px;">
             <?php if ($v['napomena_original'] ?? null): ?>
-            <div style="color:var(--muted);font-style:italic;margin-bottom:4px;">
+            <div style="color:var(--muted);font-style:italic;margin-bottom:4px;font-size:13px;">
                 📝 <?= h($v['napomena_original']) ?>
             </div>
             <?php endif; ?>
             <?php if ($v['napomena'] ?? null): ?>
-            <div style="color:#1a3a6e;font-weight:600;">
-                🏢 <?= h($v['napomena']) ?>
-            </div>
+            <div style="color:#1a3a6e;font-weight:600;"><?= h($v['napomena']) ?></div>
             <?php elseif (!($v['napomena_original'] ?? null)): ?>
             <span style="color:var(--muted);">—</span>
             <?php endif; ?>
@@ -127,6 +180,7 @@
         </td>
         <?php endif; ?>
     </tr>
+    <?php endif; ?>
     <?php endforeach; ?>
     </tbody>
 </table>
@@ -183,7 +237,7 @@
 </div>
 <?php endif; ?>
 
-<!-- MODAL: Izmeni radni sat -->
+<!-- MODAL: Izmeni radni sat (bez segmenata) -->
 <div id="modal-vreme" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;">
     <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
         <button onclick="document.getElementById('modal-vreme').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
@@ -196,10 +250,31 @@
             <div class="tim-form-group"><label>Vreme do</label><input type="time" id="ev-v-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
         </div>
         <div class="tim-form-group"><label>Opis rada</label><input type="text" id="ev-v-napomena" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        <div style="background:#fef3c7;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">⚠️ Izmena će biti zabeležena u log sa Vašim imenom i vremenom izmene.</div>
+        <div style="background:#fef3c7;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">⚠️ Izmena će biti zabeležena u log.</div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('modal-vreme').style.display='none'" class="mail-cancel-btn">Odustani</button>
             <button onclick="sacuvajIzmenuVreme()" class="btn-primary">Sačuvaj izmenu</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Izmeni segmente -->
+<div id="modal-segmenti" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:20px;overflow-y:auto;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:560px;box-shadow:0 24px 80px #000a;position:relative;margin:auto;">
+        <button onclick="document.getElementById('modal-segmenti').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:16px;">✏️ Izmeni radni sat</h3>
+        <input type="hidden" id="ev-seg-id">
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+            <div class="tim-form-group" style="margin:0;"><label>Datum</label><input type="date" id="ev-seg-datum" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
+            <div class="tim-form-group" style="margin:0;"><label>Vreme od</label><input type="time" id="ev-seg-od" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
+            <div class="tim-form-group" style="margin:0;"><label>Vreme do</label><input type="time" id="ev-seg-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
+        </div>
+        <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:10px;">Segmenti</div>
+        <div id="ev-seg-lista" style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px;"></div>
+        <div style="background:#fef3c7;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">⚠️ Izmena će biti zabeležena u log.</div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('modal-segmenti').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajIzmenuSegmente()" class="btn-primary">Sačuvaj izmenu</button>
         </div>
     </div>
 </div>
@@ -216,7 +291,7 @@
             <div class="tim-form-group"><label>Količina</label><input type="number" id="ev-m-kolicina" step="0.01" min="0" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
             <div class="tim-form-group"><label>JM</label><input type="text" id="ev-m-jm" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
         </div>
-        <div style="background:#fef3c7;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">⚠️ Izmena će biti zabeležena u log sa Vašim imenom i vremenom izmene.</div>
+        <div style="background:#fef3c7;border-radius:6px;padding:8px 12px;font-size:12px;color:#92400e;margin-bottom:12px;">⚠️ Izmena će biti zabeležena u log.</div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('modal-mat').style.display='none'" class="mail-cancel-btn">Odustani</button>
             <button onclick="sacuvajIzmenuMat()" class="btn-primary">Sačuvaj izmenu</button>
@@ -225,14 +300,79 @@
 </div>
 
 <script>
-function openIzmeniVreme(id, datum, od, do_, sati, napomena) {
-    document.getElementById('ev-vreme-id').value   = id;
-    document.getElementById('ev-v-datum').value     = datum;
-    document.getElementById('ev-v-od').value        = od;
-    document.getElementById('ev-v-do').value        = do_;
-    document.getElementById('ev-v-sati').value      = sati;
-    document.getElementById('ev-v-napomena').value  = napomena;
-    document.getElementById('modal-vreme').style.display = 'flex';
+var _evSegmenti = [];
+
+function openIzmeniVreme(id, datum, od, do_, sati, napomena, segmentiJson) {
+    if (segmentiJson) {
+        // Ima segmenata — otvori modal za segmente
+        try { _evSegmenti = JSON.parse(segmentiJson); } catch(e) { _evSegmenti = []; }
+        document.getElementById('ev-seg-id').value    = id;
+        document.getElementById('ev-seg-datum').value = datum;
+        document.getElementById('ev-seg-od').value    = od;
+        document.getElementById('ev-seg-do').value    = do_;
+        renderSegLista();
+        document.getElementById('modal-segmenti').style.display = 'flex';
+    } else {
+        // Bez segmenata — stari modal
+        document.getElementById('ev-vreme-id').value   = id;
+        document.getElementById('ev-v-datum').value    = datum;
+        document.getElementById('ev-v-od').value       = od;
+        document.getElementById('ev-v-do').value       = do_;
+        document.getElementById('ev-v-sati').value     = sati;
+        document.getElementById('ev-v-napomena').value = napomena;
+        document.getElementById('modal-vreme').style.display = 'flex';
+    }
+}
+
+function renderSegLista() {
+    var lista = document.getElementById('ev-seg-lista');
+    lista.innerHTML = '';
+    _evSegmenti.forEach(function(seg, idx) {
+        var isPrepravka = !!seg.prepravka;
+        var div = document.createElement('div');
+        div.style.cssText = 'border:1.5px solid '+(isPrepravka?'#fed7aa':'var(--light2)')+';border-radius:8px;padding:12px;background:'+(isPrepravka?'#fff7ed':'var(--light)')+';';
+        div.innerHTML = `
+            <div style="display:flex;gap:10px;margin-bottom:8px;align-items:center;">
+                <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:#c2410c;cursor:pointer;">
+                    <input type="checkbox" ${isPrepravka?'checked':''} onchange="toggleEvPrepravka(${idx}, this.checked)">
+                    Prepravka
+                </label>
+                <span style="font-size:11px;color:var(--muted);margin-left:auto;">Segment ${idx+1}</span>
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;">
+                <input type="text" value="${escAttr(seg.opis||'')}" oninput="_evSegmenti[${idx}].opis=this.value"
+                    style="border:1.5px solid var(--light2);border-radius:6px;padding:6px 10px;font-size:13px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
+                <div style="display:flex;align-items:center;gap:4px;">
+                    <input type="number" value="${seg.sati||0}" step="0.5" min="0" oninput="_evSegmenti[${idx}].sati=parseFloat(this.value)||0"
+                        style="border:1.5px solid var(--light2);border-radius:6px;padding:6px 8px;font-size:13px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
+                    <span style="font-size:12px;color:var(--muted);">h</span>
+                </div>
+            </div>
+        `;
+        lista.appendChild(div);
+    });
+}
+
+function toggleEvPrepravka(idx, val) {
+    _evSegmenti[idx].prepravka = val;
+    renderSegLista();
+}
+
+function sacuvajIzmenuSegmente() {
+    var id = document.getElementById('ev-seg-id').value;
+    var fd = new FormData();
+    fd.append('_action', 'evidencija_izmeni_segmente');
+    fd.append('id', id);
+    fd.append('datum',    document.getElementById('ev-seg-datum').value);
+    fd.append('vreme_od', document.getElementById('ev-seg-od').value);
+    fd.append('vreme_do', document.getElementById('ev-seg-do').value);
+    fd.append('segmenti', JSON.stringify(_evSegmenti));
+    fetch('', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) { document.getElementById('modal-segmenti').style.display = 'none'; location.reload(); }
+        else alert(d.err || 'Greška.');
+    });
 }
 
 function sacuvajIzmenuVreme() {
@@ -297,5 +437,9 @@ function obrisiMat(id) {
     fetch('', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(d => { if (d.ok) location.reload(); else alert(d.err || 'Greška.'); });
+}
+
+function escAttr(str) {
+    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
 }
 </script>

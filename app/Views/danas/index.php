@@ -488,7 +488,23 @@ function danasAiPrikaziPreview(tip, data) {
             html += '<span style="font-size:12px;color:var(--muted);font-style:italic;background:#f8faff;border-radius:6px;padding:6px 10px;">'+esc(data.napomena_original)+'</span>';
             html += '</div>';
         }
-        if (data.napomena) {
+        if (data.segmenti && data.segmenti.length) {
+            html += '<div class="danas-ai-row" style="flex-direction:column;gap:6px;">';
+            html += '<span class="danas-ai-label">Segmenti</span>';
+            data.segmenti.forEach(function(s, idx) {
+                var isPrepravka = s.prepravka === true;
+                html += '<div style="display:flex;align-items:flex-start;gap:10px;background:'+(isPrepravka?'#fff7ed':'#f8faff')+';border:1.5px solid '+(isPrepravka?'#fed7aa':'var(--light2)')+';border-radius:8px;padding:8px 10px;">';
+                html += '<div style="flex:1;">';
+                html += '<div style="font-size:13px;font-weight:'+(isPrepravka?'700':'600')+';color:'+(isPrepravka?'#c2410c':'#1a3a6e')+';">'+esc(s.opis)+' <span style="color:var(--muted);font-weight:400;">('+s.sati+'h)</span></div>';
+                if (s.opis_original) html += '<div style="font-size:11px;color:var(--muted);font-style:italic;margin-top:2px;">'+esc(s.opis_original)+'</div>';
+                html += '</div>';
+                html += '<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:#c2410c;white-space:nowrap;cursor:pointer;flex-shrink:0;">';
+                html += '<input type="checkbox" class="seg-prepravka" data-idx="'+idx+'" '+(isPrepravka?'checked':'')+' onchange="toggleSegPrepravka(this, '+idx+')">';
+                html += 'Prepravka</label>';
+                html += '</div>';
+            });
+            html += '</div>';
+        } else if (data.napomena) {
             html += '<div class="danas-ai-row" style="flex-direction:column;gap:4px;">';
             html += '<span class="danas-ai-label">Za investitora</span>';
             html += '<span style="font-size:13px;font-weight:600;color:#1a3a6e;background:#eff6ff;border-radius:6px;padding:6px 10px;">'+esc(data.napomena)+'</span>';
@@ -510,6 +526,13 @@ function danasAiPrikaziPreview(tip, data) {
     html += '</div></div>';
     _danasAiData = data;
     wrap.innerHTML = html;
+}
+
+function toggleSegPrepravka(checkbox, idx) {
+    if (_danasAiData && _danasAiData.segmenti && _danasAiData.segmenti[idx] !== undefined) {
+        _danasAiData.segmenti[idx].prepravka = checkbox.checked;
+        danasAiPrikaziPreview('vreme', _danasAiData);
+    }
 }
 
 function danasAiIzmeni(tip) {

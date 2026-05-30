@@ -47,11 +47,11 @@ class EvidencijaController extends \Core\Controller
         if ($filter_grad) { $where_v .= " AND (rv.gradiliste_id = ? OR rs.gradiliste_id = ?)"; $params_v[] = $filter_grad; $params_v[] = $filter_grad; }
 
         $vreme = $this->db->prepare("
-            SELECT rv.id, rv.datum, rv.vreme_od, rv.vreme_do, rv.ukupno_sati,
-                   rv.napomena, rv.stavka_id, rv.created_at,
-                   k.ime AS radnik_ime,
-                   COALESCE(rv.gradiliste_naziv, g.naziv, g2.naziv, '') AS gradiliste_naziv,
-                   rs.opis AS zadatak_opis
+            SELECT  rv.id, rv.datum, rv.vreme_od, rv.vreme_do, rv.ukupno_sati,
+                    rv.napomena, rv.napomena_original, rv.segmenti, rv.stavka_id, rv.created_at,
+                    k.ime AS radnik_ime,
+                    COALESCE(rv.gradiliste_naziv, g.naziv, g2.naziv, '') AS gradiliste_naziv,
+                    rs.opis AS zadatak_opis
             FROM raspored_vreme rv
             JOIN admin_korisnici k ON rv.radnik_id = k.id
             LEFT JOIN raspored_stavke rs ON rv.stavka_id = rs.id
@@ -124,6 +124,47 @@ class EvidencijaController extends \Core\Controller
 
             $this->loguj('materijal', $id, 'brisanje', $zapis, null, $uid);
             $this->db->prepare("DELETE FROM raspored_materijal WHERE id=?")->execute([$id]);
+            $this->json(['ok' => true]);
+        }
+
+        // ── Izmeni segmente radnog sata ──────────────────────
+        if ($action === 'evidencija_izmeni_segmente') {
+            $stmt = $this->db->prepare("SELECT * FROM raspored_vreme WHERE id=?");
+            $stmt->execute([$id]);
+            $staro = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$staro) $this->json(['ok' => false, 'err' => 'Zapis nije pronađen.']);
+
+            $segmenti_json = $_POST['segmenti'] ?? '';
+            $vreme_od      = trim($_POST['vreme_od'] ?? '');
+            $vreme_do      = trim($_POST['vreme_do'] ?? '');
+            $datum         = trim($_POST['datum']    ?? $staro['datum']);
+
+            $segmenti = json_decode($segmenti_json, true);
+            if (!$segmenti || !is_array($segmenti)) {
+                $this->json(['ok' => false, 'err' => 'Neispravan JSON segmenata.']);
+            }
+
+            // Izračunaj ukupno_sati i napomenu iz segmenata
+            $ukupno_sati = array_sum(array_column($segmenti, 'sati'));
+            $napomena    = implode('; ', array_map(fn($s) => $s['opis'] ?? '', $segmenti));
+
+            $novo = array_merge($staro, [
+                'datum'        => $datum,
+                'vreme_od'     => $vreme_od ?: null,
+                'vreme_do'     => $vreme_do ?: null,
+                'ukupno_sati'  => $ukupno_sati,
+                'napomena'     => $napomena,
+                'segmenti'     => $segmenti_json,
+            ]);
+
+            $this->loguj('vreme', $id, 'izmena', $staro, $novo, $uid);
+
+            $this->db->prepare("
+                UPDATE raspored_vreme
+                SET datum=?, vreme_od=?, vreme_do=?, ukupno_sati=?, napomena=?, segmenti=?
+                WHERE id=?
+            ")->execute([$datum, $vreme_od ?: null, $vreme_do ?: null, $ukupno_sati, $napomena, $segmenti_json, $id]);
+
             $this->json(['ok' => true]);
         }
 
