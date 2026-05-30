@@ -201,18 +201,25 @@ while ($dodato < 4) {
 
                 if ($tip === 'vreme') {
                     $systemPrompt = <<<PROMPT
-Ti si asistent koji parsira kratke opise radnog vremena električara na srpskom jeziku.
-Iz slobodnog teksta izvuci vreme rada i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
+Ti si asistent koji parsira dnevne izveštaje električara na srpskom jeziku.
+Iz slobodnog teksta izvuci vreme rada i opis izvedenih radova.
+Vrati ISKLJUČIVO validan JSON bez ikakvog dodatnog teksta, bez markdown oznaka i bez objašnjenja.
 
 Format odgovora:
-{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena":"kratak opis rada"}
+{"vreme_od":"07:00","vreme_do":"16:00","ukupno_sati":9,"napomena_original":"tačan unos radnika bez ikakvih izmena","napomena":"profesionalno preformulisan opis radova"}
 
 Pravila:
-- vreme_od i vreme_do u formatu HH:MM (24h)
-- ukupno_sati = razlika vreme_do - vreme_od (ceo broj)
-- napomena: kratko šta je rađeno, max 120 znakova, izostavi ako nije navedeno
-- Izostavi polja kojih nema u tekstu
-- Odgovaraj SAMO validnim JSON-om, ništa više
+- vreme_od i vreme_do moraju biti u formatu HH:MM (24h)
+- Prepoznaj različite formate unosa vremena (npr. "7-16", "07 do 16", "7h-16h", "od 7 do 16", "7h do 16")
+- ukupno_sati = razlika između vreme_do i vreme_od kao decimalni broj (npr. 8.5 za 8h30min)
+- Ako vreme nije moguće pouzdano prepoznati, vrati null za vreme_od, vreme_do i ukupno_sati
+- Ako je vreme_do < vreme_od, pretpostavi prelazak preko ponoći
+- napomena_original: prepiši DOSLOVNO ceo tekst radnika osim sata i minuta — ne ispravljati greške, ne menjati ništa, čuvati original kao dokaz
+- Za polje napomena: interno ispravi sve slovne i pravopisne greške iz originalnog teksta, pa tek onda preformuliši na profesionalan način pogodan za investitora
+- napomena mora biti tehnički precizna — ne dodavati radove, materijale ili detalje koji nisu navedeni
+- napomena mora obuhvatiti SVE navedene radove iz originalnog teksta
+- Ako opis radova ne postoji, izostavi oba napomena polja
+- Odgovaraj ISKLJUČIVO validnim JSON-om
 PROMPT;
                 } else {
                     // Dohvati katalog mastera
@@ -225,26 +232,35 @@ PROMPT;
                     $katalogTekst = implode("\n", array_map(fn($a) => "- {$a['naziv']} ({$a['jm']})", $katalogArtikli));
 
                     $systemPrompt = <<<PROMPT
-Ti si asistent koji parsira utrošeni materijal sa gradilišta, opisan slobodnim tekstom na srpskom jeziku.
-Izvuci listu potrošenog materijala i vrati SAMO validan JSON bez ikakvog teksta pre ili posle, bez markdown oznaka.
+Ti si asistent koji parsira utrošeni elektro materijal sa gradilišta, opisan slobodnim tekstom na srpskom jeziku.
+Izvuci listu potrošenog materijala i vrati ISKLJUČIVO validan JSON bez dodatnog teksta, bez markdown oznaka i bez objašnjenja.
 
 Format odgovora:
-{"stavke":[{"naziv":"Kabl N2XH 5x1,5","kolicina":69,"jm":"m"},{"naziv":"Rebrasto crevo HF 16/11 sivo","kolicina":130,"jm":"m"}]}
+{"stavke":[{"naziv":"Kabl N2XH 5x1,5","kolicina":69,"jm":"m"}]}
 
-Katalog poznatih artikala (koristi TAČNE nazive iz kataloga kada se poklapaju):
+Katalog poznatih artikala (koristi ISKLJUČIVO tačne nazive iz kataloga kada postoji podudaranje):
 $katalogTekst
 
 Pravila:
-- Ako artikal postoji u katalogu, koristi TAČNO taj naziv i jedinicu mere
-- Ako artikal nije u katalogu, napiši što precizniji naziv
-- kolicina je broj (bez jedinice mere)
-- jm: m, Kom, kg, m2, kpl, l, pak
-- Odgovaraj SAMO validnim JSON-om, ništa više
+- Prepoznaj artikal čak i ako je napisan skraćeno, sa slovnim greškama ili drugačijim redosledom reči
+- Ako postoji potpuno ili približno podudaranje sa katalogom, OBAVEZNO koristi TAČAN naziv i jedinicu mere iz kataloga
+- Nikada ne pretpostavljati tip ili oznaku materijala (npr. N2XH, PP-Y, PP00) ako nije jasno navedena ili prepoznata iz kataloga
+- Ako artikal nije u katalogu, napiši što precizniji naziv bez izmišljanja tehničkih detalja
+- Prepoznaj različite načine pisanja količine: "50m", "50 m", "50 metara", "5 kom", "3x", "2 rolne", "1 pakovanje"
+- Prepoznaj decimalne vrednosti sa tačkom ili zarezom (npr. 1.5 ili 1,5)
+- kolicina je decimalni broj bez jedinice mere
+- jm može biti samo: m, Kom, kg, m2, kpl, l, pak, rol
+- Ako jedinica nije navedena, zaključi iz tipa materijala (kabl → m, utičnica/kutija/osigurač → Kom, crevo/buzir → m)
+- Ispraviti samo očigledne slovne greške
+- Ako se isti artikal pojavljuje više puta, saberi količine u jednu stavku
+- Ne razdvajati jedan unos na više artikala osim ako je eksplicitno navedeno
+- Ako nijedan materijal nije prepoznat, vrati: {"stavke":[]}
+- Odgovaraj ISKLJUČIVO validnim JSON-om
 PROMPT;
                 }
 
                 $payload = json_encode([
-                    'model'      => 'claude-haiku-4-5-20251001',
+                    'model' => 'claude-sonnet-4-5',
                     'max_tokens' => 800,
                     'system'     => $systemPrompt,
                     'messages'   => [['role' => 'user', 'content' => $tekst]]
@@ -316,15 +332,16 @@ PROMPT;
 
                 $stmt = $this->db->prepare("
                     INSERT INTO raspored_vreme
-                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, meta, gradiliste_id, gradiliste_naziv)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        (stavka_id, radnik_id, datum, vreme_od, vreme_do, ukupno_sati, napomena, napomena_original, meta, gradiliste_id, gradiliste_naziv)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
                 $stmt->execute([
                     $stavka_id, $uid, date('Y-m-d'),
-                    $meta['vreme_od']    ?? null,
-                    $meta['vreme_do']    ?? null,
+                    $meta['vreme_od']         ?? null,
+                    $meta['vreme_do']         ?? null,
                     isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : null,
-                    $meta['napomena']    ?? null,
+                    $meta['napomena']         ?? null,
+                    $meta['napomena_original'] ?? null,
                     $meta_json,
                     $grad_id,
                     $grad_naziv

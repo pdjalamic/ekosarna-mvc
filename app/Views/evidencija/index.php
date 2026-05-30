@@ -106,7 +106,20 @@
         <td style="text-align:center;font-weight:700;font-size:13px;color:var(--blue);">
             <?= $v['ukupno_sati'] ? number_format($v['ukupno_sati'], 1, ',', '.') : '—' ?>
         </td>
-        <td style="font-size:12px;color:var(--muted);"><?= h($v['napomena'] ?? '') ?></td>
+        <td style="font-size:12px;">
+            <?php if ($v['napomena_original'] ?? null): ?>
+            <div style="color:var(--muted);font-style:italic;margin-bottom:4px;">
+                📝 <?= h($v['napomena_original']) ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($v['napomena'] ?? null): ?>
+            <div style="color:#1a3a6e;font-weight:600;">
+                🏢 <?= h($v['napomena']) ?>
+            </div>
+            <?php elseif (!($v['napomena_original'] ?? null)): ?>
+            <span style="color:var(--muted);">—</span>
+            <?php endif; ?>
+        </td>
         <?php if ($is_admin): ?>
         <td style="text-align:right;white-space:nowrap;">
             <button class="btn-sm" onclick="openIzmeniVreme(<?= $v['id'] ?>, '<?= h(addslashes($v['datum'])) ?>', '<?= h(addslashes($v['vreme_od'] ?? '')) ?>', '<?= h(addslashes($v['vreme_do'] ?? '')) ?>', <?= (float)($v['ukupno_sati'] ?? 0) ?>, '<?= h(addslashes($v['napomena'] ?? '')) ?>')" title="Izmeni">✏️</button>

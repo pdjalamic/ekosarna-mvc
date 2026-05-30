@@ -1,7 +1,7 @@
 <?php
 $dani_nazivi = ['Ned','Pon','Uto','Sri','Čet','Pet','Sub'];
 $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
-$gradilista_json = json_encode($gradilista ?? [], JSON_UNESCAPED_UNICODE | JSON_HEX_TAG) ?: '[]';
+$gradilista_json = json_encode($gradilista);
 ?>
 
 <div class="topbar-admin">
@@ -79,13 +79,15 @@ $gradilista_json = json_encode($gradilista ?? [], JSON_UNESCAPED_UNICODE | JSON_
                         title="Poruke" style="position:relative;">
                         💬<?php if ($s['poruka_count'] > 0): ?><span style="background:#6b7280;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:3px;font-weight:700;"><?= $s['poruka_count'] ?></span><?php endif; ?><?php if (!empty($s['nova_poruka'])): ?><span style="background:#e53935;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:2px;font-weight:700;"><?= $s['nove_poruke_count'] ?></span><?php endif; ?>
                     </button>
-                    <button type="button" class="btn-sm" title="Upiši vreme"
-                        onclick="openDanasVreme(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
-                        style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">🕐</button>
+                    <button type="button" class="btn-sm"
+                        title="<?= ($s['vreme_upisano'] ?? false) ? 'Vreme već upisano za danas' : 'Upiši vreme' ?>"
+                        <?= ($s['vreme_upisano'] ?? false) ? 'disabled' : "onclick=\"openDanasVreme({$s['id']}, '".h(addslashes($s['gradiliste_naziv'] ?? 'Stavka'))."')\"" ?>
+                        style="background:<?= ($s['vreme_upisano'] ?? false) ? '#f1f5f9' : '#eff6ff' ?>;color:<?= ($s['vreme_upisano'] ?? false) ? '#94a3b8' : '#1d4ed8' ?>;border-color:<?= ($s['vreme_upisano'] ?? false) ? '#e2e8f0' : '#bfdbfe' ?>;">🕐<?= ($s['vreme_upisano'] ?? false) ? ' ✓' : '' ?></button>
                     <?php if ($jeOdgovoran): ?>
-                    <button type="button" class="btn-sm" title="Upiši materijal"
-                        onclick="openDanasMaterijal(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
-                        style="background:#fffbeb;color:#b45309;border-color:#fde68a;">📦</button>
+                    <button type="button" class="btn-sm"
+                        title="<?= ($s['materijal_upisan'] ?? false) ? 'Materijal već upisan za danas' : 'Upiši materijal' ?>"
+                        <?= ($s['materijal_upisan'] ?? false) ? 'disabled' : "onclick=\"openDanasMaterijal({$s['id']}, '".h(addslashes($s['gradiliste_naziv'] ?? 'Stavka'))."')\"" ?>
+                        style="background:<?= ($s['materijal_upisan'] ?? false) ? '#f1f5f9' : '#fffbeb' ?>;color:<?= ($s['materijal_upisan'] ?? false) ? '#94a3b8' : '#b45309' ?>;border-color:<?= ($s['materijal_upisan'] ?? false) ? '#e2e8f0' : '#fde68a' ?>;">📦<?= ($s['materijal_upisan'] ?? false) ? ' ✓' : '' ?></button>
                     <?php endif; ?>
                 </div>
             </div>
@@ -188,6 +190,47 @@ $gradilista_json = json_encode($gradilista ?? [], JSON_UNESCAPED_UNICODE | JSON_
     </div>
 </div>
 
+<!-- MODAL: Potvrda gradilišta za slobodan unos -->
+<div id="grad-potvrda-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:10000;align-items:center;justify-content:center;padding:20px;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:420px;box-shadow:0 24px 80px #000a;">
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:8px;" id="grad-potvrda-naslov">📍 Slobodan unos</h3>
+        <div id="grad-potvrda-tekst" style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5;"></div>
+        <div id="grad-potvrda-poslednje" style="display:none;margin-bottom:12px;">
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button id="btn-isto-grad" onclick="gradPotvrdaIsto()" class="btn-primary" style="flex:1;">✓ Da, isto gradilište</button>
+                <button onclick="gradPotvrdaDrugo()" class="btn-secondary" style="flex:1;">↓ Ne, biram drugo</button>
+            </div>
+        </div>
+        <div id="grad-potvrda-izbor" style="display:none;margin-bottom:16px;">
+            <select id="grad-potvrda-sel" onchange="gradPotvrdaSelChange()"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:8px 10px;font-size:13px;outline:none;background:var(--light);margin-bottom:8px;">
+                <option value="">— Izaberi gradilište —</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>" data-naziv="<?= h($g['naziv']) ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+                <option value="rucno">— Upiši ručno —</option>
+            </select>
+            <input type="text" id="grad-potvrda-rucno" placeholder="Naziv gradilišta..."
+                style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;margin-bottom:8px;">
+            <button onclick="gradPotvrdaPotvrdi()" class="btn-primary" style="width:100%;">Potvrdi gradilište</button>
+        </div>
+        <div id="grad-potvrda-novi" style="display:none;margin-bottom:16px;">
+            <select id="grad-potvrda-novi-sel" onchange="gradPotvrdaNoviSelChange()"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:8px 10px;font-size:13px;outline:none;background:var(--light);margin-bottom:8px;">
+                <option value="">— Izaberi gradilište —</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>" data-naziv="<?= h($g['naziv']) ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+                <option value="rucno">— Upiši ručno —</option>
+            </select>
+            <input type="text" id="grad-potvrda-novi-rucno" placeholder="Naziv gradilišta..."
+                style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;margin-bottom:8px;">
+            <button onclick="gradPotvrdaNoviPotvrdi()" class="btn-primary" style="width:100%;">Potvrdi gradilište</button>
+        </div>
+        <button onclick="document.getElementById('grad-potvrda-modal').style.display='none'" class="mail-cancel-btn" style="width:100%;margin-top:4px;">Odustani</button>
+    </div>
+</div>
+
 <style>
 .danas-stavka { background:#fff;border-radius:10px;border:1.5px solid var(--light2);padding:10px 12px; }
 .danas-ai-preview { background:#fff;border:2px solid #2563eb;border-radius:10px;padding:14px 16px; }
@@ -203,71 +246,138 @@ $gradilista_json = json_encode($gradilista ?? [], JSON_UNESCAPED_UNICODE | JSON_
 var _danasStavkaId        = 0;
 var _danasPorukeInterval  = null;
 var _danasAktivniStavkaId = 0;
-var _slobodanUnos         = false; // true = slobodan unos, false = vezan za stavku
-var _danasAiData = null;
+var _slobodanUnos         = false;
+var _danasAiData          = null;
+var _slobodanTip          = '';
+var _slobodanGrad         = { id: 0, naziv: '' };
 var _gradilista           = <?= $gradilista_json ?>;
 
 // ── Slobodan unos ────────────────────────────────────────────
 function openSlobodanUnos(tip) {
-    _slobodanUnos         = true;
+    _slobodanTip  = tip;
+    _slobodanUnos = true;
     _danasAktivniStavkaId = 0;
 
-    var wrapId   = tip === 'vreme' ? 'vreme-gradiliste-wrap' : 'mat-gradiliste-wrap';
+    var fd = new FormData();
+    fd.append('_action', 'danas_ucitaj_preferencu');
+    fd.append('kljuc', 'slobodan_gradiliste_naziv_' + tip);
+    fd.append('id', 0);
+    fetch('', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => {
+        var prethodniNaziv = (d.ok && d.vrednost) ? d.vrednost : null;
+        prikaziGradPotvrdaModal(tip, prethodniNaziv);
+    })
+    .catch(function() { prikaziGradPotvrdaModal(tip, null); });
+}
+
+function prikaziGradPotvrdaModal(tip, prethodniNaziv) {
+    var naslov = tip === 'vreme' ? '🕐 Slobodan unos vremena' : '📦 Slobodan unos materijala';
+    document.getElementById('grad-potvrda-naslov').textContent = naslov;
+    document.getElementById('grad-potvrda-poslednje').style.display = 'none';
+    document.getElementById('grad-potvrda-izbor').style.display     = 'none';
+    document.getElementById('grad-potvrda-novi').style.display      = 'none';
+
+    if (prethodniNaziv) {
+        document.getElementById('grad-potvrda-tekst').innerHTML =
+            'Poslednji slobodan unos bio je na:<br><strong style="color:var(--blue);font-size:14px;">🏗️ ' +
+            esc(prethodniNaziv) + '</strong><br><br>Da li je i ovaj unos za isto gradilište?';
+        document.getElementById('btn-isto-grad').textContent = '✓ Da — ' + prethodniNaziv;
+        document.getElementById('grad-potvrda-modal').dataset.prethodniNaziv = prethodniNaziv;
+        document.getElementById('grad-potvrda-poslednje').style.display = 'block';
+    } else {
+        document.getElementById('grad-potvrda-tekst').textContent = 'Izaberi gradilište za ovaj unos.';
+        document.getElementById('grad-potvrda-novi').style.display = 'block';
+    }
+    document.getElementById('grad-potvrda-modal').style.display = 'flex';
+}
+
+function gradPotvrdaIsto() {
+    var naziv = document.getElementById('grad-potvrda-modal').dataset.prethodniNaziv || '';
+    _slobodanGrad = { id: 0, naziv: naziv };
+    var sel = document.getElementById('grad-potvrda-novi-sel');
+    if (sel) {
+        for (var i = 0; i < sel.options.length; i++) {
+            if (sel.options[i].dataset.naziv === naziv) {
+                _slobodanGrad.id = parseInt(sel.options[i].value) || 0;
+                break;
+            }
+        }
+    }
+    document.getElementById('grad-potvrda-modal').style.display = 'none';
+    otвориSlobodanUnosModal(_slobodanTip);
+}
+
+function gradPotvrdaDrugo() {
+    document.getElementById('grad-potvrda-poslednje').style.display = 'none';
+    document.getElementById('grad-potvrda-tekst').textContent = 'Izaberi gradilište:';
+    document.getElementById('grad-potvrda-izbor').style.display = 'block';
+    document.getElementById('grad-potvrda-sel').value = '';
+    document.getElementById('grad-potvrda-rucno').style.display = 'none';
+}
+
+function gradPotvrdaSelChange() {
+    var sel = document.getElementById('grad-potvrda-sel');
+    document.getElementById('grad-potvrda-rucno').style.display = sel.value === 'rucno' ? 'block' : 'none';
+}
+
+function gradPotvrdaPotvrdi() {
+    var sel = document.getElementById('grad-potvrda-sel');
+    if (sel.value === 'rucno') {
+        var naziv = document.getElementById('grad-potvrda-rucno').value.trim();
+        if (!naziv) { alert('Upiši naziv gradilišta.'); return; }
+        _slobodanGrad = { id: 0, naziv: naziv };
+    } else if (sel.value) {
+        var opt = sel.options[sel.selectedIndex];
+        _slobodanGrad = { id: parseInt(sel.value), naziv: opt.dataset.naziv || opt.textContent.trim() };
+    } else { alert('Izaberi gradilište.'); return; }
+    document.getElementById('grad-potvrda-modal').style.display = 'none';
+    otвориSlobodanUnosModal(_slobodanTip);
+}
+
+function gradPotvrdaNoviSelChange() {
+    var sel = document.getElementById('grad-potvrda-novi-sel');
+    document.getElementById('grad-potvrda-novi-rucno').style.display = sel.value === 'rucno' ? 'block' : 'none';
+}
+
+function gradPotvrdaNoviPotvrdi() {
+    var sel = document.getElementById('grad-potvrda-novi-sel');
+    if (sel.value === 'rucno') {
+        var naziv = document.getElementById('grad-potvrda-novi-rucno').value.trim();
+        if (!naziv) { alert('Upiši naziv gradilišta.'); return; }
+        _slobodanGrad = { id: 0, naziv: naziv };
+    } else if (sel.value) {
+        var opt = sel.options[sel.selectedIndex];
+        _slobodanGrad = { id: parseInt(sel.value), naziv: opt.dataset.naziv || opt.textContent.trim() };
+    } else { alert('Izaberi gradilište.'); return; }
+    document.getElementById('grad-potvrda-modal').style.display = 'none';
+    otвориSlobodanUnosModal(_slobodanTip);
+}
+
+function otвориSlobodanUnosModal(tip) {
     var modalId  = tip === 'vreme' ? 'danas-vreme-modal'     : 'danas-mat-modal';
     var naslovId = tip === 'vreme' ? 'danas-vreme-naslov'     : 'danas-mat-naslov';
     var tekstId  = tip === 'vreme' ? 'danas-vreme-tekst'      : 'danas-mat-tekst';
     var prevId   = tip === 'vreme' ? 'danas-vreme-preview'    : 'danas-mat-preview';
     var wrapInpId= tip === 'vreme' ? 'danas-vreme-input-wrap' : 'danas-mat-input-wrap';
+    var wrapId   = tip === 'vreme' ? 'vreme-gradiliste-wrap'  : 'mat-gradiliste-wrap';
 
-    document.getElementById(wrapId).style.display   = 'block';
-    document.getElementById(naslovId).textContent   = tip === 'vreme' ? '🕐 Slobodan unos vremena' : '📦 Slobodan unos materijala';
-    document.getElementById(tekstId).value          = '';
-    document.getElementById(prevId).style.display   = 'none';
-    document.getElementById(prevId).innerHTML       = '';
+    document.getElementById(wrapId).style.display    = 'none';
+    document.getElementById(naslovId).textContent    = (tip === 'vreme' ? '🕐 ' : '📦 ') + _slobodanGrad.naziv;
+    document.getElementById(tekstId).value           = '';
+    document.getElementById(prevId).style.display    = 'none';
+    document.getElementById(prevId).innerHTML        = '';
     document.getElementById(wrapInpId).style.display = 'block';
-    document.getElementById(modalId).style.display  = 'flex';
-
-    // Učitaj poslednje gradilište
-    ucitajGradilistePreferencu(tip);
-}
-
-function ucitajGradilistePreferencu(tip) {
-    var fd = new FormData();
-    fd.append('_action', 'danas_ucitaj_preferencu');
-    fd.append('kljuc', 'slobodan_gradiliste_id');
-    fd.append('id', 0);
-    fetch('', { method: 'POST', body: fd })
-    .then(r => r.json())
-    .then(d => {
-        if (d.ok && d.vrednost) {
-            var selId = tip === 'vreme' ? 'vreme-gradiliste-sel' : 'mat-gradiliste-sel';
-            var sel = document.getElementById(selId);
-            if (sel) sel.value = d.vrednost;
-        }
-    }).catch(function(){});
-}
-
-function gradilisteSelectChange(tip) {
-    var selId    = tip === 'vreme' ? 'vreme-gradiliste-sel'   : 'mat-gradiliste-sel';
-    var rucnoId  = tip === 'vreme' ? 'vreme-gradiliste-rucno' : 'mat-gradiliste-rucno';
-    var sel = document.getElementById(selId);
-    document.getElementById(rucnoId).style.display = sel.value === 'rucno' ? 'block' : 'none';
+    document.getElementById(modalId).style.display   = 'flex';
 }
 
 function getGradilisteZaUnos(tip) {
     if (!_slobodanUnos) return { id: 0, naziv: '' };
-    var selId   = tip === 'vreme' ? 'vreme-gradiliste-sel'   : 'mat-gradiliste-sel';
-    var rucnoId = tip === 'vreme' ? 'vreme-gradiliste-rucno' : 'mat-gradiliste-rucno';
-    var sel = document.getElementById(selId);
-    if (!sel) return { id: 0, naziv: '' };
-    if (sel.value === 'rucno') {
-        return { id: 0, naziv: document.getElementById(rucnoId).value.trim() };
-    }
-    if (sel.value) {
-        var opt = sel.options[sel.selectedIndex];
-        return { id: parseInt(sel.value), naziv: opt.dataset.naziv || opt.textContent };
-    }
-    return { id: 0, naziv: '' };
+    return _slobodanGrad;
+}
+
+function ucitajGradilistePreferencu(tip) {
+    // Više se ne koristi — logika je u openSlobodanUnos
 }
 
 // ── Poruke ───────────────────────────────────────────────────
@@ -372,7 +482,18 @@ function danasAiPrikaziPreview(tip, data) {
             if (data.ukupno_sati) html += ' <strong>('+data.ukupno_sati+'h)</strong>';
             html += '</span></div>';
         }
-        if (data.napomena) html += '<div class="danas-ai-row"><span class="danas-ai-label">Napomena</span><span>'+esc(data.napomena)+'</span></div>';
+        if (data.napomena_original) {
+            html += '<div class="danas-ai-row" style="flex-direction:column;gap:4px;">';
+            html += '<span class="danas-ai-label">Originalni opis</span>';
+            html += '<span style="font-size:12px;color:var(--muted);font-style:italic;background:#f8faff;border-radius:6px;padding:6px 10px;">'+esc(data.napomena_original)+'</span>';
+            html += '</div>';
+        }
+        if (data.napomena) {
+            html += '<div class="danas-ai-row" style="flex-direction:column;gap:4px;">';
+            html += '<span class="danas-ai-label">Za investitora</span>';
+            html += '<span style="font-size:13px;font-weight:600;color:#1a3a6e;background:#eff6ff;border-radius:6px;padding:6px 10px;">'+esc(data.napomena)+'</span>';
+            html += '</div>';
+        }
     } else {
         if (data.stavke && data.stavke.length) {
             html += '<div class="danas-ai-row danas-ai-col"><span class="danas-ai-label">Materijal</span><div style="margin-top:4px;">';
@@ -416,6 +537,15 @@ function danasAiSacuvaj(tip) {
     .then(r=>r.json())
     .then(d => {
         if (d.ok) {
+            // Sačuvaj preferencu gradilišta po tipu
+            if (_slobodanUnos && _slobodanGrad.naziv) {
+                var fdp = new FormData();
+                fdp.append('_action', 'danas_sacuvaj_preferencu');
+                fdp.append('kljuc', 'slobodan_gradiliste_naziv_' + tip);
+                fdp.append('vrednost', _slobodanGrad.naziv);
+                fdp.append('id', 0);
+                fetch('', { method:'POST', body:fdp });
+            }
             zatvoriSveModale();
             var toast = document.createElement('div');
             toast.textContent = tip==='vreme'?'Vreme upisano ✅':'Materijal upisan ✅';
@@ -427,10 +557,7 @@ function danasAiSacuvaj(tip) {
             alert('Greška: '+(d.err||'Nepoznata'));
         }
     })
-    .catch((e) => {
-    btn.disabled=false; btn.textContent='✅ Potvrdi';
-    alert('Greška: ' + e.message);
-});
+    .catch(()=>{ btn.disabled=false; btn.textContent='✅ Potvrdi'; alert('Mrežna greška.'); });
 }
 
 function zatvoriSveModale() {
