@@ -44,7 +44,7 @@ class Router
         }
 
         // Električar može samo danas, poruke, hr i evidencija
-        if (Auth::isElektricar() && !in_array($page, ['danas', 'poruke', 'hr', 'evidencija'])) {
+        if (Auth::isElektricar() && !in_array($page, ['danas', 'poruke', 'hr', 'evidencija', 'nabavka'])) {
             header('Location: ' . BASE_URL . '/?page=danas');
             exit;
         }
@@ -67,6 +67,7 @@ class Router
             'obavestenja' => (new \Controllers\ObavestenjaController())->index(),
             'magacin'     => (new \Controllers\MagacinController())->index(),
             'evidencija'  => (new \Controllers\EvidencijaController())->index(),
+            'nabavka'     => (new \Controllers\NabavkaController())->index(),
             'hr'          => isset($_GET['action']) && $_GET['action'] === 'karton'
                                  ? (new \Controllers\HrController())->karton()
                                  : (new \Controllers\HrController())->index(),
@@ -141,6 +142,12 @@ class Router
             if (str_starts_with($action, 'magacin_')) {
                 Auth::requireAdmin();
                 (new \Controllers\MagacinController())->ajax($action, $id);
+                return;
+            }
+
+            // Nabavka
+            if (str_starts_with($action, 'nabavka_')) {
+                (new \Controllers\NabavkaController())->ajax($action, $id);
                 return;
             }
 

@@ -192,7 +192,7 @@ while ($dodato < 4) {
 
             case 'danas_ai_parse':
                 $tekst = trim($_POST['tekst'] ?? '');
-                $tip   = in_array($_POST['tip'] ?? '', ['vreme', 'materijal']) ? $_POST['tip'] : 'vreme';
+                $tip   = in_array($_POST['tip'] ?? '', ['vreme', 'materijal', 'nabavka']) ? $_POST['tip'] : 'vreme';
 
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je prazan.']);
 
@@ -228,8 +228,7 @@ Pravila:
 - Ne dodavati radove ili detalje koji nisu navedeni
 - Odgovaraj ISKLJUČIVO validnim JSON-om
 PROMPT;
-                } else {
-                    // Dohvati katalog mastera
+                } elseif ($tip === 'materijal') {
                     $katalogStmt = $this->db->query("
                         SELECT naziv, jm FROM katalog_materijala
                         WHERE aktivan=1 AND master_id IS NULL
@@ -262,6 +261,33 @@ Pravila:
 - Ispraviti samo očigledne slovne greške
 - Ako se isti artikal pojavljuje više puta, saberi količine u jednu stavku
 - Ne razdvajati jedan unos na više artikala osim ako je eksplicitno navedeno
+- Ako nijedan materijal nije prepoznat, vrati: {"stavke":[]}
+- Odgovaraj ISKLJUČIVO validnim JSON-om
+PROMPT;
+                } else {
+                    // Nabavka — šta treba nabaviti
+                    $katalogStmt2 = $this->db->query("
+                        SELECT naziv, jm FROM katalog_materijala
+                        WHERE aktivan=1 AND master_id IS NULL ORDER BY naziv ASC
+                    ");
+                    $katalogTekst2 = implode("\n", array_map(fn($a) => "- {$a['naziv']} ({$a['jm']})", $katalogStmt2->fetchAll(\PDO::FETCH_ASSOC)));
+
+                    $systemPrompt = <<<PROMPT
+Ti si asistent koji parsira zahteve za nabavku elektromaterijala na srpskom jeziku.
+Iz slobodnog teksta izvuci listu materijala koji treba nabaviti i vrati ISKLJUČIVO validan JSON.
+
+Format: {"stavke":[{"naziv":"Kabl N2XH 3x1,5","kolicina":50,"jm":"m","napomena":""},{"naziv":"Razvodna doza","kolicina":10,"jm":"Kom","napomena":"sa poklopcem"}]}
+
+Katalog poznatih artikala (koristi ISKLJUČIVO tačne nazive iz kataloga kada postoji podudaranje):
+$katalogTekst2
+
+Pravila:
+- Odgovaraj isključivo na srpskom jeziku, koristeći srpsku terminologiju
+- Prepoznaj artikal čak i ako je napisan skraćeno ili sa greškama
+- Ako postoji podudaranje sa katalogom, OBAVEZNO koristi TAČAN naziv iz kataloga
+- kolicina: broj ili null ako nije navedena
+- jm: m, Kom, kg, m2, kpl, l, pak, rol
+- napomena: posebni zahtevi za tu stavku, ili prazan string
 - Ako nijedan materijal nije prepoznat, vrati: {"stavke":[]}
 - Odgovaraj ISKLJUČIVO validnim JSON-om
 PROMPT;
@@ -435,6 +461,38 @@ PROMPT;
                     $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_id', (string)($grad_id ?: ''));
                     $this->sacuvajPreferencu($uid, 'slobodan_gradiliste_naziv', $grad_naziv);
                 }
+
+                $this->json(['ok' => true]);
+                break;
+
+            case 'danas_upisi_nabavku':
+                $stavka_id      = (int)($_POST['stavka_id']     ?? 0) ?: null;
+                $meta_json      = $_POST['meta']                 ?? '';
+                $tekst_original = trim($_POST['tekst_original']  ?? '');
+                $grad_id        = (int)($_POST['gradiliste_id']  ?? 0) ?: null;
+                $grad_naziv     = trim($_POST['gradiliste_naziv'] ?? '');
+                $prioritet      = in_array($_POST['prioritet'] ?? '', ['normalno','hitno']) ? $_POST['prioritet'] : 'normalno';
+
+                if (!$meta_json || !$tekst_original) $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+
+                if ($stavka_id) {
+                    $check = $this->db->prepare("SELECT 1 FROM raspored_radnici WHERE stavka_id=? AND radnik_id=?");
+                    $check->execute([$stavka_id, $uid]);
+                    if (!$check->fetch()) $this->json(['ok' => false, 'err' => 'Nemate pristup ovoj stavci.']);
+
+                    if (!$grad_id && !$grad_naziv) {
+                        $gStmt = $this->db->prepare("SELECT rs.gradiliste_id, g.naziv FROM raspored_stavke rs LEFT JOIN gradilista g ON rs.gradiliste_id=g.id WHERE rs.id=?");
+                        $gStmt->execute([$stavka_id]);
+                        $gRow = $gStmt->fetch(\PDO::FETCH_ASSOC);
+                        if ($gRow) { $grad_id = $gRow['gradiliste_id']; $grad_naziv = $gRow['naziv'] ?? ''; }
+                    }
+                }
+
+                $this->db->prepare("
+                    INSERT INTO nabavka_zahtevi
+                        (stavka_id, radnik_id, gradiliste_id, gradiliste_naziv, tekst_original, stavke, status, prioritet, kreator_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 'novo', ?, ?)
+                ")->execute([$stavka_id, $uid, $grad_id, $grad_naziv, $tekst_original, $meta_json, $prioritet, $uid]);
 
                 $this->json(['ok' => true]);
                 break;

@@ -47,6 +47,10 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       Evidencija
     </a>
+    <a href="<?= BASE_URL ?>/?page=nabavka" class="<?= $active_page === 'nabavka' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.98 1.61H19a2 2 0 001.98-1.61L23 6H6"/></svg>
+      Nabavka
+    </a>
 
     <?php else: ?>
     <!-- ── ADMIN / OPERATER meni ── -->
@@ -106,6 +110,17 @@
     <a href="<?= BASE_URL ?>/?page=evidencija" class="<?= $active_page === 'evidencija' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       Evidencija
+    </a>
+
+    <a href="<?= BASE_URL ?>/?page=nabavka" class="<?= $active_page === 'nabavka' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 001.98 1.61H19a2 2 0 001.98-1.61L23 6H6"/></svg>
+      Nabavka
+      <?php
+        try {
+          $nb = (int)\Core\Database::get()->query("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo'")->fetchColumn();
+          if ($nb > 0) echo '<span class="badge">' . $nb . '</span>';
+        } catch(\Exception $e) {}
+      ?>
     </a>
 
     <?php if ($is_admin): ?>
