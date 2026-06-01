@@ -108,166 +108,118 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     <a href="?page=zadaci" class="btn-secondary" style="white-space:nowrap;">↺ Resetuj</a>
 </div>
 
-<!-- Tabela -->
 <?php if (empty($zadaci)): ?>
 <div style="text-align:center;padding:60px;color:var(--muted);background:#fff;border-radius:12px;border:1.5px solid var(--light2);">
     <div style="font-size:40px;margin-bottom:10px;">✅</div>
     <?= $filters['q'] ? 'Nema rezultata za "'.h($filters['q']).'"' : 'Nema zadataka.' ?>
 </div>
 <?php else: ?>
-<table class="z2-table">
-    <thead>
-        <tr>
-            <th style="width:44px;cursor:pointer;" onclick="setUrlParam('zsort','default');setUrlParam('str','')" title="Vrati na podrazumevani sort">
-                RB <?= $zsort==='default'?'↕':'' ?>
-            </th>
-            <th>Zadatak</th>
-            <th style="width:120px;">Kategorija</th>
-            <th style="width:180px;">Dodeljeno / Prihvatio</th>
-            <th style="width:130px;cursor:pointer;" onclick="setUrlParam('zsort', '<?= $zsort==='rok_asc'?'rok_desc':'rok_asc' ?>')" title="Sortiraj po roku">
-                Rok <?= $zsort==='rok_asc'?'↑':($zsort==='rok_desc'?'↓':'↕') ?>
-            </th>
-            <th style="width:150px;">Status</th>
-            <th style="width:120px;text-align:right;">Akcije</th>
-        </tr>
-    </thead>
-    <tbody>
-    <?php foreach ($zadaci as $i => $z):
-        $rok_klasa = '';
-        if ($z['rok'] && $z['status'] !== 'zavrseno') {
-            $diff = (strtotime($z['rok']) - strtotime($today)) / 86400;
-            if ($diff < 0)           $rok_klasa = 'err';
-            elseif ($diff <= $warn_days) $rok_klasa = 'warn';
-        }
-        $prihvacen      = !empty($z['prihvaceno_id']);
-        $moguPrihvatiti = !$prihvacen;
-        $katBoje        = katBoja($z['kategorija'] ?? '');
-        $rb             = ($stranica - 1) * $po_stranici + $i + 1;
+<div style="display:flex;flex-direction:column;gap:12px;">
+<?php foreach ($zadaci as $i => $z):
+    $rok_klasa = '';
+    if ($z['rok'] && $z['status'] !== 'zavrseno') {
+        $diff = (strtotime($z['rok']) - strtotime($today)) / 86400;
+        if ($diff < 0)           $rok_klasa = 'err';
+        elseif ($diff <= $warn_days) $rok_klasa = 'warn';
+    }
+    $prihvacen      = !empty($z['prihvaceno_id']);
+    $moguPrihvatiti = !$prihvacen;
+    $katBoje        = katBoja($z['kategorija'] ?? '');
+    $rb             = ($stranica-1)*$po_stranici + $i + 1;
+    $razlicitePosobe= $prihvacen && $z['dodeljeno_id'] && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
+    $tekst_pun      = $z['tekst'];
+    $tekst_kratki   = mb_strlen($tekst_pun) > 100 ? mb_substr($tekst_pun, 0, 100).'…' : $tekst_pun;
+    $ima_vise       = mb_strlen($tekst_pun) > 100 || $z['komentar_count'] > 0;
+    $lastTs         = !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00';
+    $borderColor    = ($z['status']==='zavrseno') ? '#e2e8f0' : (($rok_klasa==='err') ? '#fca5a5' : (($rok_klasa==='warn') ? '#fde68a' : 'var(--light2)'));
+?>
+<div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;" id="zcard-<?= $z['id'] ?>">
 
-        // Logika dodeljeno vs prihvatio
-        $razlicitePosobe = $prihvacen && $z['dodeljeno_id']
-                           && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
-    ?>
-    <tr id="zcard-<?= $z['id'] ?>">
-        <!-- RB -->
-        <td style="text-align:center;font-size:12px;color:var(--muted);font-weight:600;"><?= $rb ?></td>
-        <!-- Check + Zadatak -->
-        <td>
-            <div style="display:flex;align-items:flex-start;gap:8px;">
-                <div class="zadatak-check <?= $z['status'] ?>"
-                    onclick="ciklajStatus(<?= $z['id'] ?>, '<?= $z['status'] ?>')"
-                    style="margin-top:2px;flex-shrink:0;cursor:pointer;">
-                    <?php if ($z['status']==='zavrseno'): ?>✓
-                    <?php elseif ($z['status']==='u_toku'): ?>●
-                    <?php endif; ?>
-                </div>
-                <div>
-                    <div class="z2-tekst"><?= h($z['tekst']) ?></div>
-                    <div class="z2-meta">
-                        <?php if (!$prihvacen && $z['dodeljeno_id']): ?>
-                        <span class="z2-badge" style="background:#fef3c7;color:#d97706;">⏳ Čeka prihvatanje</span>
-                        <?php elseif ($prihvacen): ?>
-                        <span class="z2-badge" style="background:#dcfce7;color:#15803d;">
-                            ✓ Prihvatio <?= h($z['prihvaceno_ime'] ?? '') ?>
-                            · <?= date('d.m H:i', strtotime($z['prihvaceno_at'])) ?>
-                        </span>
-                        <?php endif; ?>
-                        <span style="font-size:11px;color:var(--muted);">
-                            <?= h($z['kreirao_ime']) ?> · <?= date('d.m.', strtotime($z['datum_kreiranja'])) ?>
-                        </span>
-                        <?php if ($z['komentar_count'] > 0): ?>
-                        <span style="font-size:11px;color:var(--muted);">💬 <?= $z['komentar_count'] ?></span>
-                        <?php endif; ?>
-                    </div>
-                </div>
-            </div>
-        </td>
-        <!-- Kategorija -->
-        <td>
-            <?php if ($z['kategorija']): ?>
-            <span class="z2-badge" style="background:<?= $katBoje[0] ?>;color:<?= $katBoje[1] ?>;">
-                <?= h($z['kategorija']) ?>
-            </span>
-            <?php else: ?><span style="color:var(--muted);">—</span><?php endif; ?>
-        </td>
-        <!-- Dodeljeno / Prihvatio -->
-        <td>
-            <?php if ($razlicitePosobe): ?>
-            <!-- Dodeljeno jednoj, prihvatio drugi -->
-            <div style="font-size:12px;">
-                <div style="color:var(--muted);margin-bottom:3px;">
-                    <div class="z2-avatar" style="background:<?= avatarBoja($z['dodeljeno_ime']) ?>;display:inline-flex;width:20px;height:20px;font-size:9px;">
-                        <?= inicijali($z['dodeljeno_ime']) ?>
-                    </div>
-                    <span style="color:var(--muted);text-decoration:line-through;margin-left:4px;"><?= h(explode(' ',$z['dodeljeno_ime'])[0]) ?></span>
-                </div>
-                <div style="display:flex;align-items:center;gap:5px;">
-                    <div class="z2-avatar" style="background:<?= avatarBoja($z['prihvaceno_ime']) ?>;width:22px;height:22px;font-size:10px;">
-                        <?= inicijali($z['prihvaceno_ime']) ?>
-                    </div>
-                    <span style="font-weight:600;color:#15803d;"><?= h(explode(' ',$z['prihvaceno_ime'])[0]) ?></span>
-                </div>
-            </div>
-            <?php elseif ($z['dodeljeno_ime']): ?>
-            <div style="display:flex;align-items:center;gap:7px;">
-                <div class="z2-avatar" style="background:<?= avatarBoja($z['dodeljeno_ime']) ?>;">
-                    <?= inicijali($z['dodeljeno_ime']) ?>
-                </div>
-                <span style="font-size:13px;"><?= h(explode(' ',$z['dodeljeno_ime'])[0]) ?></span>
-            </div>
-            <?php else: ?><span style="color:var(--muted);font-size:12px;">—</span><?php endif; ?>
-        </td>
-        <!-- Rok -->
-        <td>
-            <?php if ($z['rok']): ?>
-            <span class="<?= $rok_klasa==='err'?'z2-rok-err':($rok_klasa==='warn'?'z2-rok-warn':'') ?>" style="font-size:13px;">
-                <?= date('d.m.Y.', strtotime($z['rok'])) ?>
-                <?php if ($rok_klasa==='err'): ?><br><span style="font-size:10px;">PREKORAČEN</span>
-                <?php elseif ($rok_klasa==='warn'): ?><br><span style="font-size:10px;">USKORO</span>
+    <!-- Header: RB + tekst + akcije -->
+    <div style="display:flex;align-items:flex-start;gap:10px;">
+        <!-- RB + status check -->
+        <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
+            <span style="font-size:10px;color:var(--muted);font-weight:700;"><?= $rb ?></span>
+            <div class="zadatak-check <?= $z['status'] ?>"
+                onclick="ciklajStatus(<?= $z['id'] ?>, '<?= $z['status'] ?>')"
+                style="cursor:pointer;" title="Promeni status">
+                <?php if ($z['status']==='zavrseno'): ?>✓
+                <?php elseif ($z['status']==='u_toku'): ?>●
                 <?php endif; ?>
-            </span>
-            <?php else: ?><span style="color:var(--muted);">—</span><?php endif; ?>
-        </td>
-        <!-- Status -->
-        <td>
-            <select class="z2-sel" style="font-size:12px;padding:4px 8px;"
-                onchange="promeniStatus(<?= $z['id'] ?>, this.value)">
-                <option value="otvoreno" <?= $z['status']==='otvoreno'?'selected':'' ?>>Otvoreno</option>
-                <option value="u_toku"   <?= $z['status']==='u_toku'  ?'selected':'' ?>>U toku</option>
-                <option value="zavrseno" <?= $z['status']==='zavrseno'?'selected':'' ?>>Završeno</option>
-            </select>
-        </td>
+            </div>
+        </div>
+        <!-- Tekst -->
+        <div style="flex:1;min-width:0;">
+            <div style="font-size:14px;font-weight:600;color:var(--text);line-height:1.5;">
+                <span id="ztekst-kratki-<?= $z['id'] ?>"><?= h($tekst_kratki) ?></span>
+                <span id="ztekst-pun-<?= $z['id'] ?>" style="display:none;"><?= h($tekst_pun) ?></span>
+            </div>
+            <!-- Meta -->
+            <div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px;">
+                <?php if ($z['kategorija']): ?>
+                <span class="z2-badge" style="background:<?= $katBoje[0] ?>;color:<?= $katBoje[1] ?>;"><?= h($z['kategorija']) ?></span>
+                <?php endif; ?>
+                <?php if ($z['rok']): ?>
+                <span style="font-size:12px;<?= $rok_klasa==='err'?'color:#dc2626;font-weight:700;':($rok_klasa==='warn'?'color:#d97706;font-weight:700;':'color:var(--muted);') ?>">
+                    📅 <?= date('d.m.Y.', strtotime($z['rok'])) ?>
+                    <?php if ($rok_klasa==='err'): ?> — PREKORAČEN<?php elseif ($rok_klasa==='warn'): ?> — USKORO<?php endif; ?>
+                </span>
+                <?php endif; ?>
+                <?php if ($razlicitePosobe): ?>
+                <span style="font-size:11px;color:var(--muted);">
+                    <span style="text-decoration:line-through;"><?= h(explode(' ',$z['dodeljeno_ime'])[0]) ?></span>
+                    → <strong style="color:#15803d;"><?= h(explode(' ',$z['prihvaceno_ime'])[0]) ?></strong>
+                </span>
+                <?php elseif ($prihvacen): ?>
+                <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:20px;padding:2px 8px;font-weight:700;">✓ Prihvatio <?= h($z['prihvaceno_ime'] ?? '') ?> · <?= date('d.m H:i', strtotime($z['prihvaceno_at'])) ?></span>
+                <?php elseif ($z['dodeljeno_id']): ?>
+                <span style="font-size:11px;background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 8px;">⏳ <?= h($z['dodeljeno_ime'] ?? '') ?> — čeka prihvatanje</span>
+                <?php endif; ?>
+                <span style="font-size:10px;color:var(--muted);margin-left:auto;"><?= h($z['kreirao_ime']) ?> · <?= date('d.m.', strtotime($z['datum_kreiranja'])) ?></span>
+            </div>
+        </div>
         <!-- Akcije -->
-        <td>
-            <div class="z2-actions" style="justify-content:flex-end;">
-                <?php if ($moguPrihvatiti): ?>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+            <div style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;">
+                <?php if ($moguPrihvatiti && $z['dodeljeno_id']): ?>
                 <button class="btn-sm" onclick="prihvatiZadatak(<?= $z['id'] ?>)"
-                    style="background:#dcfce7;color:#15803d;border-color:#bbf7d0;font-size:11px;font-weight:700;white-space:nowrap;padding:4px 8px;">
-                    Prihvati zadatak
+                    style="background:#dcfce7;color:#15803d;border-color:#bbf7d0;font-size:11px;font-weight:700;white-space:nowrap;">
+                    Prihvati
                 </button>
                 <?php endif; ?>
-                <button class="btn-sm" onclick="toggleZKom(<?= $z['id'] ?>)"
-                    title="Komentari"
-                    style="background:<?= $z['komentar_count']>0?'#eff6ff':'var(--light)' ?>;color:<?= $z['komentar_count']>0?'#1d4ed8':'var(--muted)' ?>;border-color:<?= $z['komentar_count']>0?'#bfdbfe':'var(--light2)' ?>;"
-                    id="zbtn-kom-<?= $z['id'] ?>">
-                    💬<?php if ($z['komentar_count']>0): ?> <span><?= $z['komentar_count'] ?></span><?php endif; ?>
-                </button>
-                <button class="btn-sm" onclick="otvoriEditZadatak(<?= $z['id'] ?>,
-                    '<?= h(addslashes($z['tekst'])) ?>',
-                    '<?= h(addslashes($z['kategorija'])) ?>',
-                    '<?= $z['status'] ?>',
-                    '<?= $z['rok'] ?? '' ?>',
-                    '<?= $z['dodeljeno_id'] ?? '' ?>')" title="Izmeni">✎</button>
+                <select class="z2-sel" style="font-size:11px;padding:3px 6px;"
+                    onchange="promeniStatus(<?= $z['id'] ?>, this.value)">
+                    <option value="otvoreno" <?= $z['status']==='otvoreno'?'selected':'' ?>>Otvoreno</option>
+                    <option value="u_toku"   <?= $z['status']==='u_toku'  ?'selected':'' ?>>U toku</option>
+                    <option value="zavrseno" <?= $z['status']==='zavrseno'?'selected':'' ?>>Završeno</option>
+                </select>
+                <button class="btn-sm" onclick="otvoriEditZadatak(<?= $z['id'] ?>,'<?= h(addslashes($z['tekst'])) ?>','<?= h(addslashes($z['kategorija'])) ?>','<?= $z['status'] ?>','<?= $z['rok']??'' ?>','<?= $z['dodeljeno_id']??'' ?>')" title="Izmeni">✎</button>
                 <button class="btn-sm del" onclick="obrisiZadatak(<?= $z['id'] ?>)" title="Obriši">🗑</button>
             </div>
-        </td>
-    </tr>
-    <!-- Komentar red (skriven) -->
-    <tr id="zkom-wrap-<?= $z['id'] ?>"
-        data-last-ts="<?= !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00' ?>"
-        style="display:none;">
-        <td colspan="7" style="padding:0 14px 14px 54px;background:#f8faff;border-bottom:1.5px solid var(--light2);">
-            <div id="zkom-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:10px;padding-top:12px;">
+        </div>
+    </div>
+
+    <!-- Toggle: proširi + komentari -->
+    <?php if ($ima_vise): ?>
+    <div style="margin-top:10px;border-top:1px solid var(--light2);padding-top:8px;">
+        <button onclick="toggleZKom(<?= $z['id'] ?>)"
+            style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--blue);font-weight:600;padding:0;display:flex;align-items:center;gap:6px;"
+            id="zbtn-kom-<?= $z['id'] ?>">
+            <span id="zikona-<?= $z['id'] ?>">▶</span>
+            <?php if ($z['komentar_count'] > 0): ?>
+                💬 <?= $z['komentar_count'] ?> <?= $z['komentar_count']===1?'poruka':($z['komentar_count']<5?'poruke':'poruka') ?>
+                <?php if (mb_strlen($tekst_pun) > 100): ?> · prikaži ceo tekst<?php endif; ?>
+            <?php else: ?>
+                <?php if (mb_strlen($tekst_pun) > 100): ?>prikaži ceo tekst<?php else: ?>💬 Dodaj komentar<?php endif; ?>
+            <?php endif; ?>
+        </button>
+
+        <!-- Prošireni sadržaj -->
+        <div id="zkom-wrap-<?= $z['id'] ?>"
+            data-last-ts="<?= $lastTs ?>"
+            style="display:none;margin-top:10px;">
+            <!-- Komentari -->
+            <div id="zkom-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:10px;">
                 <?php foreach ($z['komentari'] as $k):
                     $moj = ((int)$k['autor_id'] === (int)$uid); ?>
                 <div style="display:flex;flex-direction:column;align-items:<?= $moj?'flex-end':'flex-start' ?>;">
@@ -275,26 +227,26 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
                         <?= $moj?'':'<strong>'.h($k['autor_ime']).'</strong> · ' ?>
                         <?= date('d.m H:i', strtotime($k['created_at'])) ?>
                     </div>
-                    <div style="max-width:85%;background:<?= $moj?'#1d4ed8':'#f1f5f9' ?>;color:<?= $moj?'#fff':'var(--text)' ?>;border-radius:<?= $moj?'14px 14px 4px 14px':'14px 14px 14px 4px' ?>;padding:8px 13px;font-size:13px;line-height:1.4;">
-                        <?= h($k['tekst']) ?>
-                    </div>
+                    <div style="max-width:85%;background:<?= $moj?'#1d4ed8':'#f1f5f9' ?>;color:<?= $moj?'#fff':'var(--text)' ?>;border-radius:<?= $moj?'14px 14px 4px 14px':'14px 14px 14px 4px' ?>;padding:8px 13px;font-size:13px;line-height:1.4;"><?= h($k['tekst']) ?></div>
                 </div>
                 <?php endforeach; ?>
             </div>
             <div id="zkom-row-<?= $z['id'] ?>" style="display:flex;gap:8px;max-width:700px;">
                 <input type="text" class="zkom-input" data-id="<?= $z['id'] ?>"
                     placeholder="Napiši komentar..."
-                    style="flex:1;border:1.5px solid var(--light2);border-radius:7px;padding:6px 10px;font-size:13px;outline:none;background:#fff;"
+                    style="flex:1;border:1.5px solid var(--light2);border-radius:7px;padding:6px 10px;font-size:13px;outline:none;background:var(--light);"
                     onkeydown="if(event.key==='Enter')posaljiZKomentar(this)"
                     onfocus="var row=document.getElementById('zkom-row-<?= $z['id'] ?>');setTimeout(function(){row.scrollIntoView({behavior:'smooth',block:'nearest'});},400)">
                 <button onclick="posaljiZKomentar(this.previousElementSibling)" class="btn-sm"
                     style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;">→</button>
             </div>
-        </td>
-    </tr>
-    <?php endforeach; ?>
-    </tbody>
-</table>
+        </div>
+    </div>
+    <?php endif; ?>
+
+</div>
+<?php endforeach; ?>
+</div>
 
 <!-- Paginacija -->
 <?php if ($ukupno_strana > 1): ?>
@@ -489,17 +441,24 @@ function ciklajStatus(id, current) {
 }
 
 function toggleZKom(id) {
-    var wrap = document.getElementById('zkom-wrap-'+id);
+    var wrap  = document.getElementById('zkom-wrap-'+id);
+    var ikona = document.getElementById('zikona-'+id);
     var otvoren = wrap.style.display !== 'none';
-    wrap.style.display = otvoren ? 'none' : 'table-row';
+    wrap.style.display = otvoren ? 'none' : 'block';
+    if (ikona) ikona.textContent = otvoren ? '▶' : '▼';
+    // Swap teksta
+    var kratki = document.getElementById('ztekst-kratki-'+id);
+    var pun    = document.getElementById('ztekst-pun-'+id);
+    if (kratki && pun) {
+        kratki.style.display = otvoren ? '' : 'none';
+        pun.style.display    = otvoren ? 'none' : '';
+    }
     if (!otvoren) {
-        // Registruj za polling
         _zOtvoreni[id] = wrap.dataset.lastTs || '2000-01-01 00:00:00';
         setTimeout(function(){
             document.getElementById('zkom-row-'+id).scrollIntoView({behavior:'smooth',block:'nearest'});
         }, 100);
     } else {
-        // Deregistruj
         delete _zOtvoreni[id];
     }
 }
@@ -524,10 +483,13 @@ function posaljiZKomentar(input) {
         div.scrollIntoView({behavior:'smooth',block:'nearest'});
         var btn = document.getElementById('zbtn-kom-'+id);
         if (btn) {
-            var sp = btn.querySelector('span');
-            if (sp) sp.textContent = parseInt(sp.textContent||'0')+1;
-            else btn.innerHTML += ' <span>1</span>';
-            btn.style.background='#eff6ff'; btn.style.color='#1d4ed8'; btn.style.borderColor='#bfdbfe';
+            var sp = btn.querySelector('span:not(#zikona-'+id+')');
+            // Ažuriraj tekst dugmeta
+            var ikona = document.getElementById('zikona-'+id);
+            var ikonaHtml = ikona ? ikona.outerHTML : '▼';
+            var cur = btn.textContent.match(/\d+/);
+            var nova_br = (cur ? parseInt(cur[0]) : 0) + 1;
+            btn.innerHTML = ikonaHtml + ' 💬 ' + nova_br + ' ' + (nova_br===1?'poruka':(nova_br<5?'poruke':'poruka'));
         }
     });
 }

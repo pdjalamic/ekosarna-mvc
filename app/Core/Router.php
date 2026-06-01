@@ -82,6 +82,24 @@ class Router
         $id = (int)($_POST['id'] ?? 0);
 
         try {
+            // Badge counts (sidebar polling)
+            if ($action === 'badge_counts') {
+                $db = Database::get();
+                $je_elektricar = Auth::isElektricar();
+                $uid = Auth::id();
+                if ($je_elektricar) {
+                    $nabavka = (int)$db->prepare("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo' AND radnik_id=?")->execute([$uid]) ? 0 : 0;
+                    $stmt = $db->prepare("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo' AND radnik_id=?");
+                    $stmt->execute([$uid]);
+                    $nabavka = (int)$stmt->fetchColumn();
+                    exit(json_encode(['ok'=>true,'kontakt'=>0,'zadaci'=>0,'nabavka'=>$nabavka]));
+                }
+                $kontakt = (int)$db->query("SELECT COUNT(*) FROM kontakt_forme WHERE procitano=0")->fetchColumn();
+                $zadaci  = (int)$db->query("SELECT COUNT(*) FROM interni_zadaci WHERE prihvaceno_id IS NULL AND dodeljeno_id IS NOT NULL AND status!='zavrseno'")->fetchColumn();
+                $nabavka = (int)$db->query("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo'")->fetchColumn();
+                exit(json_encode(['ok'=>true,'kontakt'=>$kontakt,'zadaci'=>$zadaci,'nabavka'=>$nabavka]));
+            }
+
             // Kontakt
             if (in_array($action, ['update_firma','update_grad','update_komentar','toggle_procitano','delete'])) {
                 (new \Controllers\KontaktController())->ajax($action, $id);

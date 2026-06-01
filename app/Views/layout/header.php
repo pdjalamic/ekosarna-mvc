@@ -60,7 +60,9 @@
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
       Kontakt forme
       <?php if ($neprocitano_count > 0): ?>
-        <span class="badge"><?= $neprocitano_count ?></span>
+        <span class="badge" id="badge-kontakt"><?= $neprocitano_count ?></span>
+      <?php else: ?>
+        <span class="badge" id="badge-kontakt" style="display:none;">0</span>
       <?php endif; ?>
     </a>
 
@@ -101,9 +103,10 @@
       Zadaci
       <?php
         try {
-          $z_open = (int)\Core\Database::get()->query("SELECT COUNT(*) FROM interni_zadaci WHERE status != 'zavrseno'")->fetchColumn();
-          if ($z_open > 0) echo '<span class="badge">' . $z_open . '</span>';
-        } catch(\Exception $e) {}
+          $z_open = (int)\Core\Database::get()->query("SELECT COUNT(*) FROM interni_zadaci WHERE prihvaceno_id IS NULL AND dodeljeno_id IS NOT NULL AND status != 'zavrseno'")->fetchColumn();
+          if ($z_open > 0) echo '<span class="badge" id="badge-zadaci">' . $z_open . '</span>';
+          else echo '<span class="badge" id="badge-zadaci" style="display:none;">0</span>';
+        } catch(\Exception $e) { echo '<span class="badge" id="badge-zadaci" style="display:none;">0</span>'; }
       ?>
     </a>
 
@@ -118,8 +121,9 @@
       <?php
         try {
           $nb = (int)\Core\Database::get()->query("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo'")->fetchColumn();
-          if ($nb > 0) echo '<span class="badge">' . $nb . '</span>';
-        } catch(\Exception $e) {}
+          if ($nb > 0) echo '<span class="badge" id="badge-nabavka">' . $nb . '</span>';
+          else echo '<span class="badge" id="badge-nabavka" style="display:none;">0</span>';
+        } catch(\Exception $e) { echo '<span class="badge" id="badge-nabavka" style="display:none;">0</span>'; }
       ?>
     </a>
 
@@ -264,4 +268,29 @@ function prikaziToast(tekst, broj) {
 
 proveritNovePoruke();
 setInterval(proveritNovePoruke, 10000);
+
+// Badge polling — svakih 60s
+function azurirajBadge(id, broj) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (broj > 0) { el.textContent = broj; el.style.display = 'inline-block'; }
+    else { el.style.display = 'none'; }
+}
+
+function proveritBadgeve() {
+    var fd = new FormData();
+    fd.append('_action', 'badge_counts');
+    fd.append('id', 0);
+    fetch('/mvc/', { method:'POST', credentials:'same-origin', body:fd })
+    .then(function(r) { return r.json(); })
+    .then(function(d) {
+        if (!d.ok) return;
+        azurirajBadge('badge-kontakt', d.kontakt || 0);
+        azurirajBadge('badge-zadaci',  d.zadaci  || 0);
+        azurirajBadge('badge-nabavka', d.nabavka || 0);
+    }).catch(function(){});
+}
+
+proveritBadgeve();
+setInterval(proveritBadgeve, 60000);
 </script>
