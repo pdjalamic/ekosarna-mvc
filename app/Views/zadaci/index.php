@@ -129,7 +129,6 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     $razlicitePosobe= $prihvacen && $z['dodeljeno_id'] && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
     $tekst_pun      = $z['tekst'];
     $tekst_kratki   = mb_strlen($tekst_pun) > 100 ? mb_substr($tekst_pun, 0, 100).'…' : $tekst_pun;
-    $ima_vise       = mb_strlen($tekst_pun) > 100 || $z['komentar_count'] > 0;
     $lastTs         = !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00';
     $borderColor    = ($z['status']==='zavrseno') ? '#e2e8f0' : (($rok_klasa==='err') ? '#fca5a5' : (($rok_klasa==='warn') ? '#fde68a' : 'var(--light2)'));
 ?>
@@ -200,7 +199,6 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     </div>
 
     <!-- Toggle: proširi + komentari -->
-    <?php if ($ima_vise): ?>
     <div style="margin-top:10px;border-top:1px solid var(--light2);padding-top:8px;">
         <button onclick="toggleZKom(<?= $z['id'] ?>)"
             style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--blue);font-weight:600;padding:0;display:flex;align-items:center;gap:6px;"
@@ -242,7 +240,6 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             </div>
         </div>
     </div>
-    <?php endif; ?>
 
 </div>
 <?php endforeach; ?>
@@ -271,11 +268,15 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
 <div id="z-novi-modal"
     style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9997;align-items:center;justify-content:center;padding:16px;">
     <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:560px;box-shadow:0 24px 80px #000a;position:relative;">
-        <button onclick="document.getElementById('z-novi-modal').style.display='none'"
+        <button onclick="zatvoriZModal('z-novi-modal')"
             style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 style="font-size:16px;font-weight:700;color:var(--blue);margin-bottom:16px;">+ Novi zadatak</h3>
-        <textarea id="z-tekst" placeholder="Upiši novi zadatak..."
-            style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical;outline:none;background:var(--light);box-sizing:border-box;min-height:80px;margin-bottom:12px;"></textarea>
+        <div style="position:relative;margin-bottom:12px;">
+            <textarea id="z-tekst" placeholder="Upiši novi zadatak..."
+                style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:10px 46px 10px 12px;font-size:14px;font-family:inherit;resize:vertical;outline:none;background:var(--light);box-sizing:border-box;min-height:80px;"></textarea>
+            <button type="button" onclick="startMic('z-tekst', this)" id="mic-z-novi"
+                style="position:absolute;top:8px;right:8px;background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:15px;cursor:pointer;line-height:1;" title="Glasovni unos">🎤</button>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;">
             <input type="text" id="z-kat" placeholder="Kategorija" list="kat-list" autocomplete="off"
                 style="flex:1;min-width:140px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
@@ -292,7 +293,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
         </div>
         <div id="z-add-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
-            <button class="mail-cancel-btn" onclick="document.getElementById('z-novi-modal').style.display='none'">Odustani</button>
+            <button class="mail-cancel-btn" onclick="zatvoriZModal('z-novi-modal')">Odustani</button>
             <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="dodajZadatak()">+ Dodaj</button>
         </div>
     </div>
@@ -302,12 +303,16 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
 <div id="z-edit-modal"
     style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
     <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:500px;box-shadow:0 24px 80px #000a;position:relative;">
-        <button onclick="document.getElementById('z-edit-modal').style.display='none'"
+        <button onclick="zatvoriZModal('z-edit-modal')"
             style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 style="font-size:16px;font-weight:700;color:var(--blue);margin-bottom:16px;">✎ Izmeni zadatak</h3>
         <input type="hidden" id="z-edit-id">
-        <textarea id="z-edit-tekst" rows="3"
-            style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:9px 12px;font-size:14px;font-family:inherit;resize:vertical;outline:none;background:var(--light);box-sizing:border-box;margin-bottom:10px;"></textarea>
+        <div style="position:relative;margin-bottom:10px;">
+            <textarea id="z-edit-tekst" rows="3"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:9px 46px 9px 12px;font-size:14px;font-family:inherit;resize:vertical;outline:none;background:var(--light);box-sizing:border-box;"></textarea>
+            <button type="button" onclick="startMic('z-edit-tekst', this)" id="mic-z-edit"
+                style="position:absolute;top:8px;right:8px;background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:15px;cursor:pointer;line-height:1;" title="Glasovni unos">🎤</button>
+        </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;">
             <input type="text" id="z-edit-kat" placeholder="Kategorija" list="kat-list-edit"
                 style="flex:1;min-width:120px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
@@ -332,7 +337,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
         </div>
         <div id="z-edit-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
-            <button class="mail-cancel-btn" onclick="document.getElementById('z-edit-modal').style.display='none'">Odustani</button>
+            <button class="mail-cancel-btn" onclick="zatvoriZModal('z-edit-modal')">Odustani</button>
             <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="sacuvajZadatak()">Sačuvaj</button>
         </div>
     </div>
@@ -528,5 +533,80 @@ function obrisiZadatak(id) {
     post({ _action:'zadatak_delete', id:id }).then(function(d) {
         if (d.ok) document.getElementById('zcard-'+id).remove();
     });
+}
+
+// ── Glasovni unos ────────────────────────────────────────────
+var _micRec = null;
+
+function zatvoriZModal(id) {
+    if (_micRec) { try { _micRec.stop(); } catch(e) {} _micRec = null; }
+    var el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+}
+
+function startMic(targetId, btn) {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Glasovni unos nije podržan. Koristi Chrome ili Safari.');
+        return;
+    }
+    if (_micRec) { _micRec.stop(); return; }
+
+    var textarea  = document.getElementById(targetId);
+    var origStyle = btn.style.cssText;
+    var aktivan   = true;
+
+    btn.textContent = '⏹';
+    btn.style.background = '#fee2e2';
+    btn.style.color = '#dc2626';
+    btn.style.borderColor = '#fca5a5';
+
+    var _aktivniRec = null;
+
+    function novaSesija() {
+        var rec = new SpeechRecognition();
+        rec.lang = 'sr-RS';
+        rec.continuous = false;
+        rec.interimResults = false;
+        _aktivniRec = rec;
+
+        rec.onresult = function(e) {
+            var nov = e.results[0][0].transcript.trim();
+            var stari = textarea.value.trim();
+            textarea.value = stari ? stari + ' ' + nov : nov;
+        };
+
+        rec.onerror = function(e) {
+            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
+            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
+            aktivan = false;
+            _micRec = null; _aktivniRec = null;
+            resetMicBtn(btn, origStyle);
+        };
+
+        rec.onend = function() {
+            _aktivniRec = null;
+            _micRec = null;
+            if (aktivan) novaSesija();
+            else resetMicBtn(btn, origStyle);
+        };
+
+        try { rec.start(); } catch(e) {}
+    }
+
+    _micRec = {
+        stop: function() {
+            aktivan = false;
+            if (_aktivniRec) { try { _aktivniRec.stop(); } catch(e) {} }
+            else resetMicBtn(btn, origStyle);
+        }
+    };
+    novaSesija();
+}
+
+function resetMicBtn(btn, origStyle) {
+    _micRec = null;
+    btn.textContent = '🎤';
+    btn.style.cssText = origStyle;
 }
 </script>

@@ -491,12 +491,86 @@ function esc(str) {
     if (!str && str!==0) return '';
     return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
+
+// ── Glasovni unos ────────────────────────────────────────────
+var _micRec = null;
+
+function zatvoriNovuNabavku() {
+    if (_micRec) { try { _micRec.stop(); } catch(e) {} _micRec = null; }
+    document.getElementById('modal-nova-nabavka').style.display = 'none';
+}
+
+function startMic(targetId, btn) {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Glasovni unos nije podržan. Koristi Chrome ili Safari.');
+        return;
+    }
+    if (_micRec) { _micRec.stop(); return; }
+
+    var textarea  = document.getElementById(targetId);
+    var origStyle = btn.style.cssText;
+    var aktivan   = true;
+
+    btn.textContent = '⏹';
+    btn.style.background = '#fee2e2';
+    btn.style.color = '#dc2626';
+    btn.style.borderColor = '#fca5a5';
+
+    var _aktivniRec = null;
+
+    function novaSesija() {
+        var rec = new SpeechRecognition();
+        rec.lang = 'sr-RS';
+        rec.continuous = false;
+        rec.interimResults = false;
+        _aktivniRec = rec;
+
+        rec.onresult = function(e) {
+            var nov = e.results[0][0].transcript.trim();
+            var stari = textarea.value.trim();
+            textarea.value = stari ? stari + ' ' + nov : nov;
+        };
+
+        rec.onerror = function(e) {
+            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
+            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
+            aktivan = false;
+            _micRec = null; _aktivniRec = null;
+            resetMicBtn(btn, origStyle);
+        };
+
+        rec.onend = function() {
+            _aktivniRec = null;
+            _micRec = null;
+            if (aktivan) novaSesija();
+            else resetMicBtn(btn, origStyle);
+        };
+
+        try { rec.start(); } catch(e) {}
+    }
+
+    _micRec = {
+        stop: function() {
+            aktivan = false;
+            if (_aktivniRec) { try { _aktivniRec.stop(); } catch(e) {} }
+            else resetMicBtn(btn, origStyle);
+        }
+    };
+    novaSesija();
+}
+
+function resetMicBtn(btn, origStyle) {
+    _micRec = null;
+    btn.textContent = '🎤';
+    btn.style.cssText = origStyle;
+}
 </script>
 
 <!-- MODAL: Nova nabavka -->
 <div id="modal-nova-nabavka" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center;padding:20px;">
     <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:520px;box-shadow:0 24px 80px #000a;position:relative;max-height:90vh;overflow-y:auto;">
-        <button onclick="document.getElementById('modal-nova-nabavka').style.display='none'"
+        <button onclick="zatvoriNovuNabavku()"
             style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 style="font-size:15px;font-weight:700;color:#15803d;margin-bottom:16px;">🛒 Nova nabavka</h3>
 
@@ -526,7 +600,9 @@ function esc(str) {
                     style="border:1.5px solid var(--light2);border-radius:7px;padding:8px 10px;font-size:13px;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;font-family:inherit;"></textarea>
             </div>
             <div style="display:flex;gap:8px;justify-content:flex-end;">
-                <button onclick="document.getElementById('modal-nova-nabavka').style.display='none'" class="mail-cancel-btn">Odustani</button>
+                <button onclick="zatvoriNovuNabavku()" class="mail-cancel-btn">Odustani</button>
+                <button type="button" onclick="startMic('nova-nabavka-tekst', this)" id="mic-nova-nabavka"
+                    style="background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:8px 14px;font-size:15px;cursor:pointer;line-height:1;" title="Glasovni unos">🎤</button>
                 <button onclick="novaNabavkaAnaliziraj()" class="btn-primary" id="btn-nova-nabavka-analiziraj">🤖 Analiziraj</button>
             </div>
         </div>

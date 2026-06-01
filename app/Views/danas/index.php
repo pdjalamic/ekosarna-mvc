@@ -661,6 +661,7 @@ function danasAiSacuvaj(tip) {
 }
 
 function zatvoriSveModale() {
+    if (_micRec) { try { _micRec.stop(); } catch(e) {} _micRec = null; }
     ['danas-thread','danas-vreme-modal','danas-mat-modal','danas-nabavka-modal','grad-potvrda-modal'].forEach(function(id){
         var el = document.getElementById(id);
         if (el) el.style.display='none';
@@ -699,36 +700,6 @@ function startMic(targetId, btn) {
     btn.style.background = '#fee2e2';
     btn.style.color = '#dc2626';
     btn.style.borderColor = '#fca5a5';
-
-    function novaSesija() {
-        var rec = new SpeechRecognition();
-        rec.lang = 'sr-RS';
-        rec.continuous = false;
-        rec.interimResults = false;
-        _micRec = rec;
-
-        rec.onresult = function(e) {
-            var nov = e.results[0][0].transcript.trim();
-            var stari = textarea.value.trim();
-            textarea.value = stari ? stari + ' ' + nov : nov;
-        };
-
-        rec.onerror = function(e) {
-            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
-            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
-            aktivan = false;
-            _micRec = null;
-            resetMicBtn(btn, origStyle);
-        };
-
-        rec.onend = function() {
-            _micRec = null;
-            if (aktivan) novaSesija();
-            else resetMicBtn(btn, origStyle);
-        };
-
-        try { rec.start(); } catch(e) {}
-    }
 
     var _aktivniRec = null;
 
