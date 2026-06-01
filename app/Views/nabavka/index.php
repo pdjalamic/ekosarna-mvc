@@ -136,7 +136,7 @@ $statusLabele = [
 
     <!-- AI stavke -->
     <?php if (!empty($z['stavke_parsed'])): ?>
-    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;">
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px;max-width:700px;">
         <?php foreach ($z['stavke_parsed'] as $s): ?>
         <span style="background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:6px;padding:4px 10px;font-size:13px;font-weight:600;color:#15803d;">
             <?= h($s['naziv'] ?? '') ?>
@@ -171,9 +171,11 @@ $statusLabele = [
             <?php endif; ?>
         </button>
 
-        <div id="komentari-<?= $z['id'] ?>" style="display:none;margin-top:8px;border-top:1px solid var(--light2);padding-top:10px;">
+        <div id="komentari-<?= $z['id'] ?>"
+            data-last-ts="<?= !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00' ?>"
+            style="display:none;margin-top:8px;border-top:1px solid var(--light2);padding-top:10px;">
             <?php if (!empty($z['komentari'])): ?>
-            <div style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:12px;">
+            <div id="nkom-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:12px;">
                 <?php foreach ($z['komentari'] as $k):
                     $moj = ((int)$k['autor_id'] === (int)$uid);
                 ?>
@@ -186,6 +188,8 @@ $statusLabele = [
                 </div>
                 <?php endforeach; ?>
             </div>
+            <?php else: ?>
+            <div id="nkom-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:12px;"></div>
             <?php endif; ?>
 
             <div id="komentar-row-<?= $z['id'] ?>" style="display:flex;gap:8px;margin-top:2px;">
@@ -245,12 +249,56 @@ $statusLabele = [
 </div>
 
 <script>
+var _nUid = <?= (int)$uid ?>;
+var _nOtvoreni = {}; // zahtev_id -> last_ts
+
+// Polling za nove komentare u nabavci
+setInterval(function() {
+    Object.keys(_nOtvoreni).forEach(function(id) {
+        var after = _nOtvoreni[id];
+        var fd = new FormData();
+        fd.append('_action', 'nabavka_komentari_novi');
+        fd.append('id', id);
+        fd.append('after', after);
+        fetch('', { method:'POST', body:fd })
+        .then(r => r.json())
+        .then(d => {
+            if (!d.ok || !d.komentari || !d.komentari.length) return;
+            var lista = document.getElementById('nkom-lista-'+id);
+            if (!lista) return;
+            d.komentari.forEach(function(k) {
+                var moj = k.autor_id == _nUid;
+                var div = document.createElement('div');
+                div.style.cssText = 'display:flex;flex-direction:column;align-items:'+(moj?'flex-end':'flex-start')+';';
+                var ts = k.created_at ? k.created_at.substring(0,16).replace('T',' ') : '';
+                var dateDot = ts.substring(5,10).replace('-','.');
+                div.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;'+(moj?'text-align:right;':'')+'">'+(moj?'':'<strong>'+escHN(k.autor_ime)+'</strong> · ')+dateDot+' '+ts.substring(11,16)+'</div>'+
+                    '<div style="max-width:85%;background:'+(moj?'#1d4ed8':'#f1f5f9')+';color:'+(moj?'#fff':'var(--text)')+';border-radius:'+(moj?'14px 14px 4px 14px':'14px 14px 14px 4px')+';padding:8px 13px;font-size:13px;line-height:1.4;">'+escHN(k.tekst)+'</div>';
+                lista.appendChild(div);
+            });
+            _nOtvoreni[id] = d.komentari[d.komentari.length-1].created_at;
+            var wrap = document.getElementById('komentari-'+id);
+            if (wrap) wrap.dataset.lastTs = _nOtvoreni[id];
+            lista.lastChild.scrollIntoView({behavior:'smooth',block:'nearest'});
+        }).catch(function(){});
+    });
+}, 5000);
+
+function escHN(str) {
+    return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
 function toggleKomentari(id) {
     var div   = document.getElementById('komentari-' + id);
     var ikona = document.getElementById('ikona-kom-' + id);
     var otvoren = div.style.display !== 'none';
-    div.style.display   = otvoren ? 'none' : 'block';
-    ikona.textContent   = otvoren ? '▶' : '▼';
+    div.style.display = otvoren ? 'none' : 'block';
+    ikona.textContent = otvoren ? '▶' : '▼';
+    if (!otvoren) {
+        _nOtvoreni[id] = div.dataset.lastTs || '2000-01-01 00:00:00';
+    } else {
+        delete _nOtvoreni[id];
+    }
 }
 
 function openStatusModal(id, status, napomena, obradjuje_id) {

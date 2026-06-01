@@ -140,6 +140,21 @@ class NabavkaController extends \Core\Controller
             $this->json(['ok' => true]);
         }
 
+        // Novi komentari (polling)
+        if ($action === 'nabavka_komentari_novi') {
+            $after = $_POST['after'] ?? '2000-01-01 00:00:00';
+            $stmt  = $this->db->prepare("
+                SELECT nk.*, k2.ime AS autor_ime
+                FROM nabavka_komentari nk
+                JOIN admin_korisnici k2 ON nk.autor_id = k2.id
+                WHERE nk.zahtev_id = ? AND nk.created_at > ?
+                ORDER BY nk.created_at ASC
+            ");
+            $stmt->execute([$id, $after]);
+            $novi = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $this->json(['ok' => true, 'komentari' => $novi]);
+        }
+
         // Dodaj komentar
         if ($action === 'nabavka_komentar') {
             $tekst = trim($_POST['tekst'] ?? '');
