@@ -151,8 +151,10 @@ $gradilista_json = json_encode($gradilista);
             <textarea id="danas-vreme-tekst" rows="4"
                 placeholder="npr. od 7 do 15h, kabliranje rasvete na spratu"
                 style="border:1.5px solid var(--light2);border-radius:8px;padding:9px 13px;font-size:14px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;"></textarea>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;align-items:center;">
                 <button onclick="zatvoriSveModale()" class="mail-cancel-btn">Odustani</button>
+                <button onclick="startMic('danas-vreme-tekst', this)" id="mic-vreme"
+                    style="background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:8px 14px;font-size:15px;cursor:pointer;" title="Glasovni unos">🎤</button>
                 <button onclick="danasAiAnaliziraj('vreme')" class="btn-primary" id="btn-vreme-analiziraj">🤖 Analiziraj</button>
             </div>
         </div>
@@ -186,8 +188,10 @@ $gradilista_json = json_encode($gradilista);
             <textarea id="danas-mat-tekst" rows="5"
                 placeholder="npr. kabal 3x1.5 n2xh 69m, kabal 5x1.5 n2xh 125m, buzir hf f16 130m"
                 style="border:1.5px solid var(--light2);border-radius:8px;padding:9px 13px;font-size:14px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;"></textarea>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;align-items:center;">
                 <button onclick="zatvoriSveModale()" class="mail-cancel-btn">Odustani</button>
+                <button onclick="startMic('danas-mat-tekst', this)" id="mic-mat"
+                    style="background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:8px 14px;font-size:15px;cursor:pointer;" title="Glasovni unos">🎤</button>
                 <button onclick="danasAiAnaliziraj('materijal')" class="btn-primary" id="btn-mat-analiziraj">🤖 Analiziraj</button>
             </div>
         </div>
@@ -209,8 +213,10 @@ $gradilista_json = json_encode($gradilista);
             <textarea id="danas-nabavka-tekst" rows="4"
                 placeholder="npr. treba mi 50m kabla n2xh 3x1.5, 10 doza i konektori za spajanje"
                 style="border:1.5px solid var(--light2);border-radius:8px;padding:9px 13px;font-size:14px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;"></textarea>
-            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;">
+            <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px;align-items:center;">
                 <button onclick="zatvoriSveModale()" class="mail-cancel-btn">Odustani</button>
+                <button onclick="startMic('danas-nabavka-tekst', this)" id="mic-nabavka"
+                    style="background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:8px 14px;font-size:15px;cursor:pointer;" title="Glasovni unos">🎤</button>
                 <button onclick="danasAiAnaliziraj('nabavka')" class="btn-primary" id="btn-nabavka-analiziraj">🤖 Analiziraj</button>
             </div>
         </div>
@@ -674,4 +680,102 @@ setInterval(function() {
     });
     if (!otvoren) location.reload();
 }, 25000);
+// ── Glasovni unos ────────────────────────────────────────────
+var _micRec = null;
+
+function startMic(targetId, btn) {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Glasovni unos nije podržan. Koristi Chrome ili Safari.');
+        return;
+    }
+    if (_micRec) { _micRec.stop(); return; }
+
+    var textarea  = document.getElementById(targetId);
+    var origStyle = btn.style.cssText;
+    var aktivan   = true;
+
+    btn.textContent = '⏹';
+    btn.style.background = '#fee2e2';
+    btn.style.color = '#dc2626';
+    btn.style.borderColor = '#fca5a5';
+
+    function novaSesija() {
+        var rec = new SpeechRecognition();
+        rec.lang = 'sr-RS';
+        rec.continuous = false;
+        rec.interimResults = false;
+        _micRec = rec;
+
+        rec.onresult = function(e) {
+            var nov = e.results[0][0].transcript.trim();
+            var stari = textarea.value.trim();
+            textarea.value = stari ? stari + ' ' + nov : nov;
+        };
+
+        rec.onerror = function(e) {
+            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
+            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
+            aktivan = false;
+            _micRec = null;
+            resetMicBtn(btn, origStyle);
+        };
+
+        rec.onend = function() {
+            _micRec = null;
+            if (aktivan) novaSesija();
+            else resetMicBtn(btn, origStyle);
+        };
+
+        try { rec.start(); } catch(e) {}
+    }
+
+    var _aktivniRec = null;
+
+    function novaSesija() {
+        var rec = new SpeechRecognition();
+        rec.lang = 'sr-RS';
+        rec.continuous = false;
+        rec.interimResults = false;
+        _aktivniRec = rec;
+
+        rec.onresult = function(e) {
+            var nov = e.results[0][0].transcript.trim();
+            var stari = textarea.value.trim();
+            textarea.value = stari ? stari + ' ' + nov : nov;
+        };
+
+        rec.onerror = function(e) {
+            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
+            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
+            aktivan = false;
+            _micRec = null; _aktivniRec = null;
+            resetMicBtn(btn, origStyle);
+        };
+
+        rec.onend = function() {
+            _aktivniRec = null;
+            _micRec = null;
+            if (aktivan) novaSesija();
+            else resetMicBtn(btn, origStyle);
+        };
+
+        try { rec.start(); } catch(e) {}
+    }
+
+    _micRec = {
+        stop: function() {
+            aktivan = false;
+            if (_aktivniRec) { try { _aktivniRec.stop(); } catch(e) {} }
+            else resetMicBtn(btn, origStyle);
+        }
+    };
+    novaSesija();
+}
+
+function resetMicBtn(btn, origStyle) {
+    _micRec = null;
+    btn.textContent = '🎤';
+    btn.style.cssText = origStyle;
+}
 </script>

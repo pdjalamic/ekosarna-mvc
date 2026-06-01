@@ -37,6 +37,8 @@ function toggleRead(id) {
       badge.className = 'badge-new'; badge.textContent = 'Novo';
       btn.textContent = '✓ Pročitano';
     }
+    // Odmah ažuriraj sidebar badge
+    if (typeof proveritBadgeve === 'function') proveritBadgeve();
   });
 }
 
