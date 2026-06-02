@@ -21,18 +21,35 @@ class ZadaciController extends \Core\Controller
 
         $uid = Auth::id();
 
+        // Prihvatio filter: '' (default) = svi, <id> = konkretna osoba
+        $zdodRaw = $_GET['zdod'] ?? '';
+        $prihvatioMode = (ctype_digit((string)$zdodRaw) && (int)$zdodRaw > 0) ? (int)$zdodRaw : 'svi';
+
         $filters = [
             'status'     => $_GET['zstatus']    ?? '',
             'q'          => trim($_GET['zq']    ?? ''),
             'kategorija' => trim($_GET['zkat']  ?? ''),
-            'dodeljeno'  => (int)($_GET['zdod'] ?? 0) ?: null,
+            'dodeljeno'  => $prihvatioMode,
         ];
+
+        // Opseg po tome ko je PRIHVATIO zadatak
+        $uScope = function($z) use ($prihvatioMode) {
+            if ($prihvatioMode === 'svi') return true;
+            return (int)($z['prihvaceno_id'] ?? 0) === (int)$prihvatioMode;
+        };
 
         $zsort = in_array($_GET['zsort'] ?? '', ['rok_asc','rok_desc','default'])
                  ? ($_GET['zsort'] ?? 'default')
                  : 'default';
 
-        $svi_zadaci = InterniZadatak::getAll($filters);
+        $svi_zadaci = InterniZadatak::getAll([
+            'status'     => $filters['status'],
+            'q'          => $filters['q'],
+            'kategorija' => $filters['kategorija'],
+        ]);
+
+        // Primeni opseg (svi / konkretna osoba)
+        $svi_zadaci = array_values(array_filter($svi_zadaci, $uScope));
 
         // Dohvati dodatne podatke
         foreach ($svi_zadaci as &$z) {
@@ -61,15 +78,18 @@ if ($filters['status'] === '') {
     $svi_zadaci = array_values(array_filter($svi_zadaci, fn($z) => $z['status'] !== 'zavrseno'));
 }
 
-// Filter po tome ko je PRIHVATIO (ne ko je dodeljen)
-if (!empty($filters['dodeljeno'])) {
-    $svi_zadaci = array_values(array_filter($svi_zadaci,
-        fn($z) => (int)($z['prihvaceno_id'] ?? 0) === (int)$filters['dodeljeno']
-    ));
-}
+        // Grupa za default redosled:
+        // 0 = neprihvaćen + dodeljen (čeka prihvatanje), 1 = neprihvaćen + nedodeljen,
+        // 2 = moji prihvaćeni, 3 = tuđi prihvaćeni
+        $grupa = function($z) use ($uid) {
+            if (empty($z['prihvaceno_id'])) {
+                return !empty($z['dodeljeno_id']) ? 0 : 1;
+            }
+            return ((int)$z['prihvaceno_id'] === (int)$uid) ? 2 : 3;
+        };
 
         // Sortiranje
-        usort($svi_zadaci, function($a, $b) use ($zsort) {
+        usort($svi_zadaci, function($a, $b) use ($zsort, $grupa) {
             if ($zsort === 'rok_asc') {
                 if (!$a['rok'] && !$b['rok']) return $b['id'] - $a['id'];
                 if (!$a['rok']) return 1;
@@ -82,11 +102,12 @@ if (!empty($filters['dodeljeno'])) {
                 if (!$b['rok']) return -1;
                 return strcmp($b['rok'], $a['rok']);
             }
-            // Default: neprihvaćeni prvi, pa po id DESC
-            $aNep = empty($a['prihvaceno_id']) && $a['status'] !== 'zavrseno';
-            $bNep = empty($b['prihvaceno_id']) && $b['status'] !== 'zavrseno';
-            if ($aNep && !$bNep) return -1;
-            if (!$aNep && $bNep) return 1;
+            // Default: po grupi (neprihvaćeni → nedodeljeni → moji → ostali),
+            // unutar grupe po datumu unosa opadajuće (najnoviji prvi)
+            $ga = $grupa($a); $gb = $grupa($b);
+            if ($ga !== $gb) return $ga - $gb;
+            $ca = $a['datum_kreiranja'] ?? ''; $cb = $b['datum_kreiranja'] ?? '';
+            if ($ca !== $cb) return strcmp($cb, $ca);
             return $b['id'] - $a['id'];
         });
 
@@ -99,10 +120,16 @@ if (!empty($filters['dodeljeno'])) {
         $kategorije = InterniZadatak::getKategorije();
         $korisnici  = Korisnik::getAll();
 
-        $svi      = count(InterniZadatak::getAll());
-        $otvoreno = count(InterniZadatak::getAll(['status' => 'otvoreno']));
-        $u_toku   = count(InterniZadatak::getAll(['status' => 'u_toku']));
-        $zavrseno = count(InterniZadatak::getAll(['status' => 'zavrseno']));
+        // Brojači prate prikazani opseg (isti scope + q + kategorija, sve statuse)
+        $scopeBase = InterniZadatak::getAll([
+            'q'          => $filters['q'],
+            'kategorija' => $filters['kategorija'],
+        ]);
+        $scopeBase = array_filter($scopeBase, $uScope);
+        $svi      = count($scopeBase);
+        $otvoreno = count(array_filter($scopeBase, fn($z) => $z['status'] === 'otvoreno'));
+        $u_toku   = count(array_filter($scopeBase, fn($z) => $z['status'] === 'u_toku'));
+        $zavrseno = count(array_filter($scopeBase, fn($z) => $z['status'] === 'zavrseno'));
 
         $this->view('zadaci/index', compact(
             'zadaci', 'kategorije', 'korisnici', 'filters',

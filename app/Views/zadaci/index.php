@@ -100,10 +100,15 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
         <?php endforeach; ?>
     </select>
     <select class="z2-sel" onchange="setUrlParam('zdod', this.value)">
-    <option value="0">Prihvatio: Svi</option>
+        <option value="" <?= $filters['dodeljeno']==='svi'?'selected':'' ?>>Prihvatio: Svi</option>
         <?php foreach ($korisnici as $u): ?>
-        <option value="<?= $u['id'] ?>" <?= ($filters['dodeljeno']==$u['id'])?'selected':'' ?>><?= h($u['ime']) ?></option>
+        <option value="<?= $u['id'] ?>" <?= (is_int($filters['dodeljeno']) && $filters['dodeljeno']===(int)$u['id'])?'selected':'' ?>><?= h($u['ime']) ?></option>
         <?php endforeach; ?>
+    </select>
+    <select class="z2-sel" onchange="setUrlParam('zsort', this.value)">
+        <option value="" <?= $zsort==='default'?'selected':'' ?>>Sortiraj: Podrazumevano</option>
+        <option value="rok_asc" <?= $zsort==='rok_asc'?'selected':'' ?>>Rok: najpre najbliži</option>
+        <option value="rok_desc" <?= $zsort==='rok_desc'?'selected':'' ?>>Rok: najpre najdalji</option>
     </select>
     <a href="?page=zadaci" class="btn-secondary" style="white-space:nowrap;">↺ Resetuj</a>
 </div>
@@ -127,12 +132,16 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     $katBoje        = katBoja($z['kategorija'] ?? '');
     $rb             = ($stranica-1)*$po_stranici + $i + 1;
     $razlicitePosobe= $prihvacen && $z['dodeljeno_id'] && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
+    // Da li zadatak pripada ulogovanom: prihvatio ga ja, ili je slobodan/dodeljen meni
+    $pid            = (int)($z['prihvaceno_id'] ?? 0);
+    $did            = (int)($z['dodeljeno_id'] ?? 0);
+    $mojZadatak     = $pid ? ($pid === (int)$uid) : ($did === 0 || $did === (int)$uid);
     $tekst_pun      = $z['tekst'];
     $tekst_kratki   = mb_strlen($tekst_pun) > 100 ? mb_substr($tekst_pun, 0, 100).'…' : $tekst_pun;
     $lastTs         = !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00';
     $borderColor    = ($z['status']==='zavrseno') ? '#e2e8f0' : (($rok_klasa==='err') ? '#fca5a5' : (($rok_klasa==='warn') ? '#fde68a' : 'var(--light2)'));
 ?>
-<div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;" id="zcard-<?= $z['id'] ?>">
+<div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;<?= $mojZadatak ? '' : 'filter:grayscale(0.9);opacity:.62;' ?>" id="zcard-<?= $z['id'] ?>">
 
     <!-- Header: RB + tekst + akcije -->
     <div style="display:flex;align-items:flex-start;gap:10px;">

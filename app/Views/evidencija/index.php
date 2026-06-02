@@ -1,3 +1,64 @@
+<style>
+@media (max-width: 720px) {
+    /* Evidencija: široke tabele -> kartice na telefonu (bez horizontalnog skrola) */
+    .rs-tabela-wrap { overflow-x: visible !important; }
+    .rs-tabela { display: block; width: 100%; min-width: 0 !important; }
+    .rs-tabela thead { display: none; }
+    .rs-tabela tbody { display: block; }
+    .rs-tabela tr.rs-red {
+        display: block;
+        border: 1.5px solid var(--light2);
+        border-radius: 10px;
+        margin-bottom: 12px;
+        padding: 6px 14px;
+        background: #fff;
+    }
+    .rs-tabela td {
+        display: block;
+        width: auto !important;
+        text-align: left !important;
+        padding: 5px 0 !important;
+        border-bottom: 1px solid var(--light);
+        white-space: normal !important;
+    }
+    .rs-tabela tr.rs-red td:last-child { border-bottom: none; }
+    .rs-tabela td:nth-child(1) { display: none; } /* redni broj */
+    .rs-tabela td::before {
+        display: block;
+        font-weight: 700;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+        letter-spacing: .04em;
+        margin-bottom: 2px;
+    }
+    .rs-vreme td:nth-child(2)::before { content: "Datum"; }
+    .rs-vreme td:nth-child(3)::before { content: "Radnik"; }
+    .rs-vreme td:nth-child(4)::before { content: "Gradilište / zadatak"; }
+    .rs-vreme td:nth-child(5)::before { content: "Vreme"; }
+    .rs-vreme td:nth-child(6)::before { content: "Sati"; }
+    .rs-vreme td:nth-child(7)::before { content: "Opis rada"; }
+    .rs-mat td:nth-child(2)::before { content: "Datum"; }
+    .rs-mat td:nth-child(3)::before { content: "Radnik"; }
+    .rs-mat td:nth-child(4)::before { content: "Gradilište / zadatak"; }
+    .rs-mat td:nth-child(5)::before { content: "Artikal"; }
+    .rs-mat td:nth-child(6)::before { content: "Količina"; }
+    .rs-mat td:nth-child(7)::before { content: "JM"; }
+
+    /* Materijal: Artikal + Količina + JM u istom redu unutar kartice */
+    .rs-mat tr.rs-red { display: flex; flex-wrap: wrap; align-items: flex-start; }
+    .rs-mat td { flex: 0 0 100%; }
+    .rs-mat td:nth-child(5) { flex: 1 1 45%; }
+    .rs-mat td:nth-child(6),
+    .rs-mat td:nth-child(7) {
+        flex: 0 0 auto;
+        text-align: right;
+        padding-left: 16px !important;
+        border-bottom: none;
+    }
+}
+</style>
+
 <div class="topbar-admin" style="flex-wrap:wrap;gap:10px;">
     <div class="page-title">📊 Evidencija radova</div>
 </div>
@@ -73,7 +134,7 @@
 <?php if (empty($vreme_unosi)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema unosa radnog vremena za izabrani period.</div>
 <?php else: ?>
-<table class="rs-tabela">
+<table class="rs-tabela rs-vreme">
     <thead>
         <tr>
             <th style="width:40px;text-align:center;">#</th>
@@ -193,7 +254,7 @@
 <?php if (empty($mat_unosi)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema unosa materijala za izabrani period.</div>
 <?php else: ?>
-<table class="rs-tabela">
+<table class="rs-tabela rs-mat">
     <thead>
         <tr>
             <th style="width:36px;text-align:center;">#</th>
