@@ -8,8 +8,19 @@ class Config
 {
     public static function load(): void
     {
-        $env_file = ROOT . '/.env';
-        if (file_exists($env_file)) {
+        // .env je izmešten van web root-a (iznad public_html) radi bezbednosti.
+        // Tražimo ga na više lokacija — koristi se PRVA koja postoji.
+        $kandidati = [
+            dirname(ROOT, 2) . '/.env',  // npr. /home/ekosarna/.env  (van public_html)
+            dirname(ROOT) . '/.env',     // npr. /home/ekosarna/public_html/.env
+            ROOT . '/.env',              // stara lokacija (fallback)
+        ];
+        $env_file = '';
+        foreach ($kandidati as $putanja) {
+            if (is_file($putanja)) { $env_file = $putanja; break; }
+        }
+
+        if ($env_file !== '') {
             foreach (file($env_file, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) as $line) {
                 if (str_starts_with(trim($line), '#')) continue;
                 if (!str_contains($line, '=')) continue;
