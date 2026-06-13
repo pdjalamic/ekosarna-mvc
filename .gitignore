@@ -1,0 +1,8 @@
+# Konfiguracija sa kredencijalima — nikada ne commitovati
+.env
+*.env
+**/.env
+
+# Logovi
+error_log
+logs/
