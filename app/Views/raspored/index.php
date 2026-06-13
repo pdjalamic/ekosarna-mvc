@@ -185,7 +185,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 <!-- MODAL: Dodaj/Izmeni stavku -->
 <div id="rs-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9997;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto;">
     <div style="background:#fff;border-radius:16px;padding:28px;width:100%;max-width:580px;box-shadow:0 24px 80px #000a;position:relative;margin:auto;">
-        <button onclick="document.getElementById('rs-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <button onclick="zatvoriRsModal()" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 id="rs-modal-title" style="font-size:16px;font-weight:700;color:var(--blue);margin-bottom:18px;">Nova stavka</h3>
         <input type="hidden" id="rs-stavka-id" value="0">
         <input type="hidden" id="rs-dan-id" value="">
@@ -202,9 +202,13 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
         </div>
         <div class="tim-form-group">
             <label>Opis zadatka</label>
-            <textarea id="rs-opis" rows="3"
-                style="border:1.5px solid var(--light2);border-radius:7px;padding:8px 12px;font-size:13px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;"
-                placeholder="Šta treba uraditi..."></textarea>
+            <div style="position:relative;">
+                <textarea id="rs-opis" rows="3"
+                    style="border:1.5px solid var(--light2);border-radius:7px;padding:8px 46px 8px 12px;font-size:13px;font-family:inherit;outline:none;background:var(--light);width:100%;resize:vertical;box-sizing:border-box;"
+                    placeholder="Šta treba uraditi..."></textarea>
+                <button type="button" onclick="startMic('rs-opis', this)" id="mic-rs-opis"
+                    style="position:absolute;top:8px;right:8px;background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:15px;cursor:pointer;line-height:1;" title="Glasovni unos">🎤</button>
+            </div>
         </div>
         <div class="tim-form-group">
             <label>Električari i vreme rada</label>
@@ -258,7 +262,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 
         <div id="rs-err" style="color:#dc2626;font-size:12px;margin-top:8px;display:none;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
-            <button class="mail-cancel-btn" onclick="document.getElementById('rs-modal').style.display='none'">Odustani</button>
+            <button class="mail-cancel-btn" onclick="zatvoriRsModal()">Odustani</button>
             <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="sacuvajStavku()">Sačuvaj</button>
         </div>
     </div>
@@ -641,5 +645,78 @@ function posaljiRasporedPoruku() {
     fetch('', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(d => { if (d.ok) { document.getElementById('rs-poruka-input').value = ''; ucitajRasporedPoruke(_rsPorukStavkaId); } });
+}
+// ── Glasovni unos ────────────────────────────────────────────
+var _micRec = null;
+
+function zatvoriRsModal() {
+    if (_micRec) { try { _micRec.stop(); } catch(e) {} _micRec = null; }
+    document.getElementById('rs-modal').style.display = 'none';
+}
+
+function startMic(targetId, btn) {
+    var SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        alert('Glasovni unos nije podržan. Koristi Chrome ili Safari.');
+        return;
+    }
+    if (_micRec) { _micRec.stop(); return; }
+
+    var textarea  = document.getElementById(targetId);
+    var origStyle = btn.style.cssText;
+    var aktivan   = true;
+
+    btn.textContent = '⏹';
+    btn.style.background = '#fee2e2';
+    btn.style.color = '#dc2626';
+    btn.style.borderColor = '#fca5a5';
+
+    var _aktivniRec = null;
+
+    function novaSesija() {
+        var rec = new SpeechRecognition();
+        rec.lang = 'sr-RS';
+        rec.continuous = false;
+        rec.interimResults = false;
+        _aktivniRec = rec;
+
+        rec.onresult = function(e) {
+            var nov = e.results[0][0].transcript.trim();
+            var stari = textarea.value.trim();
+            textarea.value = stari ? stari + ' ' + nov : nov;
+        };
+
+        rec.onerror = function(e) {
+            if (e.error === 'no-speech') { if (aktivan) novaSesija(); return; }
+            if (e.error !== 'aborted') alert('Greška mikrofona: ' + e.error);
+            aktivan = false;
+            _micRec = null; _aktivniRec = null;
+            resetMicBtn(btn, origStyle);
+        };
+
+        rec.onend = function() {
+            _aktivniRec = null;
+            _micRec = null;
+            if (aktivan) novaSesija();
+            else resetMicBtn(btn, origStyle);
+        };
+
+        try { rec.start(); } catch(e) {}
+    }
+
+    _micRec = {
+        stop: function() {
+            aktivan = false;
+            if (_aktivniRec) { try { _aktivniRec.stop(); } catch(e) {} }
+            else resetMicBtn(btn, origStyle);
+        }
+    };
+    novaSesija();
+}
+
+function resetMicBtn(btn, origStyle) {
+    _micRec = null;
+    btn.textContent = '🎤';
+    btn.style.cssText = origStyle;
 }
 </script>

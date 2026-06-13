@@ -94,21 +94,35 @@
                     <?php endif; ?>
 
                     <!-- Primaoci -->
+                    <?php
+                        // Grupiši primaoce po firmi (da se firma ne ponavlja na svakom redu)
+                        $grupe = [];
+                        foreach ($l['primaoci'] as $p) {
+                            $f = trim($p['firma'] ?? '');
+                            $kljuc = $f !== '' ? $f : '— bez firme —';
+                            $grupe[$kljuc][] = $p;
+                        }
+                        uksort($grupe, function($a, $b) {
+                            if ($a === '— bez firme —') return 1;   // bez firme uvek na kraj
+                            if ($b === '— bez firme —') return -1;
+                            return strcasecmp($a, $b);
+                        });
+                    ?>
                     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;">
-                        Primaoci (<?= count($l['primaoci']) ?>)
+                        Primaoci (<?= count($l['primaoci']) ?>) · <?= count($grupe) ?> <?= count($grupe) === 1 ? 'firma' : 'firmi' ?>
                     </div>
-                    <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                        <?php foreach ($l['primaoci'] as $p): ?>
-                        <span style="background:#fff;border:1px solid var(--light2);border-radius:99px;font-size:12px;padding:3px 12px;display:flex;align-items:center;gap:6px;">
-                            <?php if ($p['firma']): ?>
-                            <span style="font-weight:700;color:var(--blue);"><?= h($p['firma']) ?></span>
-                            <span style="color:var(--light2);">|</span>
-                            <?php endif; ?>
-                            <?php if ($p['ime']): ?>
-                            <span><?= h($p['ime']) ?></span>
-                            <?php endif; ?>
+                    <div style="background:#fff;border:1.5px solid var(--light2);border-radius:8px;max-height:340px;overflow-y:auto;">
+                        <?php foreach ($grupe as $firma => $kontakti): ?>
+                        <div style="display:flex;align-items:baseline;gap:8px;padding:7px 14px;background:var(--light);border-bottom:1px solid var(--light2);position:sticky;top:0;z-index:1;">
+                            <span style="font-weight:700;font-size:12px;color:var(--blue);"><?= h($firma) ?></span>
+                            <span style="font-size:11px;color:var(--muted);">(<?= count($kontakti) ?>)</span>
+                        </div>
+                        <?php foreach ($kontakti as $p): ?>
+                        <div style="display:flex;flex-wrap:wrap;gap:2px 12px;padding:6px 14px 6px 22px;border-bottom:1px solid var(--light);font-size:12px;">
+                            <?php if ($p['ime']): ?><span style="font-weight:600;min-width:140px;"><?= h($p['ime']) ?></span><?php endif; ?>
                             <span style="color:var(--muted);"><?= h($p['email']) ?></span>
-                        </span>
+                        </div>
+                        <?php endforeach; ?>
                         <?php endforeach; ?>
                     </div>
                 </div>
