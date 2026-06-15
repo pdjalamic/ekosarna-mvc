@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Pravila rada (obavezno)
+
+- **Uvek prvo objasni plan i pitaj za potvrdu pre bilo kakve izmene.** Ne menjaj kod dok korisnik ne odobri plan.
+- **Ne menjaj više od jednog fajla bez izričite dozvole.** Ako zadatak zahteva izmene u više fajlova, prvo objasni šta i gde, pa traži potvrdu.
+- **Ako nešto nije jasno, pitaj korisnika umesto da pretpostaviš.**
+- **Communicate in English** (the user is practicing English). If the user does not understand something, they will ask for a clarification in Serbian — only then explain in Serbian.
+
 ## What this is
 
 Internal admin panel / PWA for **Ekošarna D.O.O.** (a Serbian electrical-works company). It manages contact-form leads from the public site, work scheduling, job sites (gradilišta), tasks, time tracking, warehouse/procurement, an address book, and team accounts. The UI language is **Serbian** — code identifiers, table/column names, routes, and comments are all in Serbian, and user-facing strings should stay in Serbian to match.
