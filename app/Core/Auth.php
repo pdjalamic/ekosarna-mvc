@@ -3,6 +3,13 @@ namespace Core;
 
 class Auth
 {
+    // Grupisanje uloga po nivou pristupa. Više naziva uloga mapira se na isti
+    // skup ovlašćenja; stari nazivi (Administrator/Operater/Elektricar) ostaju
+    // važeći radi postojećih naloga.
+    public const ULOGE_ADMIN      = ['Direktor', 'AT', 'AF', 'Administrator'];
+    public const ULOGE_OPERATER   = ['Inženjer na gradilištu', 'Operater'];
+    public const ULOGE_ELEKTRICAR = ['Električar', 'Pomoćni radnik', 'Elektricar'];
+
     public static function start(): void
     {
         if (session_status() === PHP_SESSION_NONE) {
@@ -39,7 +46,7 @@ class Auth
     public static function requireAdmin(): void
     {
         self::requireLogin();
-        if ($_SESSION['ek_user_uloga'] !== 'Administrator') {
+        if (!self::isAdmin()) {
             header('Location: ' . (defined('BASE_URL') ? BASE_URL : '') . '/?page=kontakt');
             exit;
         }
@@ -87,10 +94,10 @@ class Auth
     public static function telefon(): string { return $_SESSION['ek_user_telefon']      ?? ''; }
     public static function mailPass(): string{ return $_SESSION['ek_user_mail_pass']    ?? ''; }
 
-    public static function isAdmin(): bool       { return self::uloga() === 'Administrator'; }
-    public static function isOperater(): bool    { return self::uloga() === 'Operater'; }
-    public static function isElektricar(): bool  { return self::uloga() === 'Elektricar'; }
-    public static function isKancelarija(): bool { return in_array(self::uloga(), ['Administrator', 'Operater']); }
+    public static function isAdmin(): bool       { return in_array(self::uloga(), self::ULOGE_ADMIN, true); }
+    public static function isOperater(): bool    { return in_array(self::uloga(), self::ULOGE_OPERATER, true); }
+    public static function isElektricar(): bool  { return in_array(self::uloga(), self::ULOGE_ELEKTRICAR, true); }
+    public static function isKancelarija(): bool { return self::isAdmin() || self::isOperater(); }
 
     public static function canImenik(): bool
     {

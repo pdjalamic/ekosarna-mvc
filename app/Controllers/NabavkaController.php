@@ -31,11 +31,15 @@ class NabavkaController extends \Core\Controller
         $gradilista = $this->db->query("SELECT id, naziv FROM gradilista ORDER BY naziv ASC")->fetchAll(\PDO::FETCH_ASSOC);
 
         if ($je_kancelarija) {
-            $radnici = $this->db->query("
+            $uloge_kancelarija = array_merge(Auth::ULOGE_ADMIN, Auth::ULOGE_OPERATER);
+            $ph_kancelarija = implode(',', array_fill(0, count($uloge_kancelarija), '?'));
+            $stmt_radnici = $this->db->prepare("
                 SELECT id, ime FROM admin_korisnici
-                WHERE aktivan=1 AND uloga IN ('administrator','operater')
+                WHERE aktivan=1 AND uloga IN ($ph_kancelarija)
                 ORDER BY ime ASC
-            ")->fetchAll(\PDO::FETCH_ASSOC);
+            ");
+            $stmt_radnici->execute($uloge_kancelarija);
+            $radnici = $stmt_radnici->fetchAll(\PDO::FETCH_ASSOC);
         }
 
         $where  = "nz.created_at BETWEEN ? AND ?";

@@ -105,11 +105,15 @@ class RasporedController extends \Core\Controller
             }
         }
 
-        $elektricari = $this->db->query("
+        $uloge_elektricar = Auth::ULOGE_ELEKTRICAR;
+        $ph_elektricar = implode(',', array_fill(0, count($uloge_elektricar), '?'));
+        $stmt_elektricari = $this->db->prepare("
             SELECT id, ime FROM admin_korisnici
-            WHERE uloga = 'Elektricar' AND aktivan = 1
+            WHERE uloga IN ($ph_elektricar) AND aktivan = 1
             ORDER BY ime
-        ")->fetchAll(\PDO::FETCH_ASSOC);
+        ");
+        $stmt_elektricari->execute($uloge_elektricar);
+        $elektricari = $stmt_elektricari->fetchAll(\PDO::FETCH_ASSOC);
 
         $gradilista = \Controllers\GradilistaController::getAktivna();
 

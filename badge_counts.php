@@ -7,26 +7,32 @@ header('Content-Type: application/json; charset=utf-8');
 
 // Bootstrap
 define('ROOT', __DIR__);
-require_once ROOT . '/app/Core/Config.php';
-\Core\Config::load();
+define('APP',  ROOT . '/app');
 
-session_start();
+spl_autoload_register(function (string $class): void {
+    $file = APP . '/' . str_replace('\\', '/', $class) . '.php';
+    if (file_exists($file)) require_once $file;
+});
 
-if (empty($_SESSION['user_id'])) {
+require_once APP . '/Core/Config.php';
+require_once APP . '/helpers.php';
+
+\Core\Auth::start();
+
+if (!\Core\Auth::check()) {
     echo json_encode(['ok' => false]);
     exit;
 }
 
 try {
-    $db    = \Core\Database::get();
-    $uloga = $_SESSION['uloga'] ?? '';
-    $je_elektricar = ($uloga === 'elektricar');
+    $db  = \Core\Database::get();
+    $uid = \Core\Auth::id();
 
-    if ($je_elektricar) {
-        // Elektrčar vidi samo nabavku
+    if (\Core\Auth::isElektricar()) {
+        // Električar vidi samo nabavku
         $nabavka = (int)$db->query("
             SELECT COUNT(*) FROM nabavka_zahtevi
-            WHERE status = 'novo' AND radnik_id = " . (int)$_SESSION['user_id']
+            WHERE status = 'novo' AND radnik_id = " . $uid
         )->fetchColumn();
         echo json_encode(['ok' => true, 'kontakt' => 0, 'zadaci' => 0, 'nabavka' => $nabavka]);
     } else {

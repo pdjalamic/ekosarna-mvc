@@ -15,6 +15,18 @@
       </tr>
     </thead>
     <tbody>
+    <?php
+    // Vrednost koja se čuva => naziv koji se prikazuje. "Električar" zadržava
+    // staru vrednost "Elektricar" da postojeći električari ostanu netaknuti.
+    $uloge_opcije = [
+        'Direktor'               => 'Direktor',
+        'AT'                     => 'AT',
+        'AF'                     => 'AF',
+        'Inženjer na gradilištu' => 'Inženjer na gradilištu',
+        'Elektricar'             => 'Električar',
+        'Pomoćni radnik'         => 'Pomoćni radnik',
+    ];
+    ?>
     <?php foreach ($korisnici as $i => $u): ?>
     <tr id="tim-row-<?= $u['id'] ?>">
       <td class="num"><?= $i+1 ?></td>
@@ -26,9 +38,12 @@
         <select class="tim-uloga-select" data-id="<?= $u['id'] ?>"
           style="border:1.5px solid var(--light2);border-radius:6px;padding:3px 7px;font-size:12px;background:var(--light);font-family:inherit;cursor:pointer;"
           <?= $u['id'] == \Core\Auth::id() ? 'disabled' : '' ?>>
-          <option value="Administrator" <?= $u['uloga']==='Administrator' ? 'selected':'' ?>>Administrator</option>
-          <option value="Operater"      <?= $u['uloga']==='Operater'      ? 'selected':'' ?>>Operater</option>
-          <option value="Elektricar" <?= $u['uloga']==='Elektricar' ? 'selected':'' ?>>Električar</option>
+          <?php if (!array_key_exists($u['uloga'], $uloge_opcije)): ?>
+          <option value="<?= h($u['uloga']) ?>" selected><?= h($u['uloga']) ?> (stara)</option>
+          <?php endif; ?>
+          <?php foreach ($uloge_opcije as $val => $lab): ?>
+          <option value="<?= h($val) ?>" <?= $u['uloga']===$val ? 'selected':'' ?>><?= h($lab) ?></option>
+          <?php endforeach; ?>
         </select>
       </td>
       <td>
@@ -88,9 +103,12 @@
     <div class="tim-form-group"><label>Lozinka admin panela (min. 6)</label><input type="password" id="tim-pass" placeholder="••••••••"></div>
     <div class="tim-form-group"><label>Uloga</label>
       <select id="tim-uloga">
-        <option value="Operater">Operater</option>
-        <option value="Administrator">Administrator</option>
+        <option value="Direktor">Direktor</option>
+        <option value="AT">AT</option>
+        <option value="AF">AF</option>
+        <option value="Inženjer na gradilištu" selected>Inženjer na gradilištu</option>
         <option value="Elektricar">Električar</option>
+        <option value="Pomoćni radnik">Pomoćni radnik</option>
       </select>
     </div>
     <div class="tim-form-group"><label>Primarni kanal notifikacija</label>

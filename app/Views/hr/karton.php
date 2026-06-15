@@ -16,7 +16,7 @@
 </style>
 
 <?php
-$je_admin = \Core\Auth::isAdmin() || \Core\Auth::uloga() === 'Operater';
+$je_admin = \Core\Auth::isKancelarija();
 $tip_ugovora_label = ['neodredjeno'=>'Na neodređeno','odredjeno'=>'Na određeno','ucenicka'=>'Učenička praksa','probni'=>'Probni rad'];
 $tip_odsustva = ['godisnji'=>'Godišnji odmor','bolovanje'=>'Bolovanje','neplaceno'=>'Neplaćeno','porodiljsko'=>'Porodiljsko','placeno'=>'Plaćeno','praznik'=>'Državni praznik','ostalo'=>'Ostalo'];
 $tip_boja = ['godisnji'=>'#dcfce7','bolovanje'=>'#fee2e2','neplaceno'=>'#fef3c7','porodiljsko'=>'#fce7f3','placeno'=>'#dbeafe','praznik'=>'#ede9fe','ostalo'=>'#f1f5f9'];

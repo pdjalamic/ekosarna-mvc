@@ -21,7 +21,8 @@ class TimController extends \Core\Controller
                 $email    = mb_substr(trim($_POST['email_k']                ?? ''), 0, 200);
                 $user     = mb_substr(trim($_POST['username_k']             ?? ''), 0, 100);
                 $pass     = $_POST['password_k']  ?? '';
-                $uloga    = in_array($_POST['uloga'] ?? '', ['Administrator','Operater', 'Elektricar']) ? $_POST['uloga'] : 'Operater';
+                $uloge_dozvoljene = array_merge(Auth::ULOGE_ADMIN, Auth::ULOGE_OPERATER, Auth::ULOGE_ELEKTRICAR);
+                $uloga    = in_array($_POST['uloga'] ?? '', $uloge_dozvoljene, true) ? $_POST['uloga'] : 'Operater';
                 $tel      = mb_substr(trim($_POST['telefon_u']   ?? ''), 0, 50);
                 $mpass    = mb_substr(trim($_POST['mail_pass_u'] ?? ''), 0, 255);
                 $platforma  = in_array($_POST['platforma']  ?? '', ['android','ios','web']) ? $_POST['platforma']  : 'android';
@@ -83,7 +84,8 @@ class TimController extends \Core\Controller
                 break;
 
             case 'tim_change_uloga':
-                $uloga = in_array($_POST['uloga'] ?? '', ['Administrator','Operater','Elektricar']) ? $_POST['uloga'] : 'Operater';
+                $uloge_dozvoljene = array_merge(Auth::ULOGE_ADMIN, Auth::ULOGE_OPERATER, Auth::ULOGE_ELEKTRICAR);
+                $uloga = in_array($_POST['uloga'] ?? '', $uloge_dozvoljene, true) ? $_POST['uloga'] : 'Operater';
                 Korisnik::changeUloga($id, $uloga);
                 $this->json(['ok' => true]);
                 break;
