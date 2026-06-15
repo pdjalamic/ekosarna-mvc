@@ -24,6 +24,19 @@ There is no build step, package manager, or test suite. Development is "edit a `
 - Schema: core tables (`admin_korisnici`, `kontakt_forme`, `imenik_*`) are auto-created/migrated on each authenticated request by `Database::migrate()`. The rest of the tables (raspored, magacin, nabavka, evidencija, katalog) are **not** in `migrate()` — import them from the `.sql` files in `mvc/` and the repo root (`raspored_novo.sql`, `magacin_tabele.sql`, `katalog_materijala.sql`, `ekosarna_db.sql`, etc.).
 - On an empty `admin_korisnici` table, `migrate()` seeds a first Administrator: username `ekosarna`, password `Ek0s@rna2024!`.
 
+## Poslovna pravila (uloge)
+
+Uloge se prikazuju pod više naziva, ali mapiraju na 3 nivoa ovlašćenja (konstante u `app/Core/Auth.php`: `ULOGE_ADMIN` / `ULOGE_OPERATER` / `ULOGE_ELEKTRICAR`). Ovo **nije duplikat** — naručilac izričito traži više naziva sa istim ovlašćenjima; lista se širi vremenom:
+- **Admin**: Direktor, AT, AF (+ legacy Administrator)
+- **Kancelarija/operativa**: Inženjer na gradilištu, Rukovodilac operative (+ legacy Operater)
+- **Teren**: Monter poslovođa, Zamenik montera poslovođe, Monter, Pomoćni radnik (+ legacy Elektricar)
+
+Sve provere (`isAdmin/isOperater/isElektricar/isKancelarija`) i SQL `IN` liste rade preko ovih konstanti — koristi ih kao jedini izvor istine, ne hardkoduj nazive.
+
+- **Raspored**: u raspored (i kao „odgovoran za unos materijala") mogu operativa + teren (`ULOGE_OPERATER` + `ULOGE_ELEKTRICAR`); admini (Direktor/AT/AF) ne. Vidi `RasporedController::index()`.
+- **Zadaci**: zadaju (i menjaju/brišu) **samo** Direktor i Inženjer na gradilištu; primaju **samo** AT i AF. Samododela ne postoji. Konstante `ZADACI_ZADAJU` / `ZADACI_PRIMAJU` u `ZadaciController.php`.
+- **ENUM kolona `uloga`**: kolacija je accent-insensitive — ne dodavati dve vrednosti koje se razlikuju samo po kvačici (npr. `Elektricar`/`Električar`) jer ENUM puca greškom 1291 (duplikat).
+
 ## Architecture
 
 ### Request flow
