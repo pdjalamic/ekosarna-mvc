@@ -82,10 +82,12 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             </div>
         </div>
     </div>
+    <?php if ($mozeZadati): ?>
     <button onclick="document.getElementById('z-novi-modal').style.display='flex'"
         style="background:#1d4ed8;color:#fff;border:none;border-radius:9px;padding:10px 18px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;">
         + Novi zadatak
     </button>
+    <?php endif; ?>
 </div>
 
 <!-- Filteri -->
@@ -132,16 +134,12 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     $katBoje        = katBoja($z['kategorija'] ?? '');
     $rb             = ($stranica-1)*$po_stranici + $i + 1;
     $razlicitePosobe= $prihvacen && $z['dodeljeno_id'] && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
-    // Da li zadatak pripada ulogovanom: prihvatio ga ja, ili je slobodan/dodeljen meni
-    $pid            = (int)($z['prihvaceno_id'] ?? 0);
-    $did            = (int)($z['dodeljeno_id'] ?? 0);
-    $mojZadatak     = $pid ? ($pid === (int)$uid) : ($did === 0 || $did === (int)$uid);
     $tekst_pun      = $z['tekst'];
     $tekst_kratki   = mb_strlen($tekst_pun) > 100 ? mb_substr($tekst_pun, 0, 100).'…' : $tekst_pun;
     $lastTs         = !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00';
     $borderColor    = ($z['status']==='zavrseno') ? '#e2e8f0' : (($rok_klasa==='err') ? '#fca5a5' : (($rok_klasa==='warn') ? '#fde68a' : 'var(--light2)'));
 ?>
-<div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;<?= $mojZadatak ? '' : 'filter:grayscale(0.9);opacity:.62;' ?>" id="zcard-<?= $z['id'] ?>">
+<div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;" id="zcard-<?= $z['id'] ?>">
 
     <!-- Header: RB + tekst + akcije -->
     <div style="display:flex;align-items:flex-start;gap:10px;">
@@ -201,8 +199,10 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
                     <option value="u_toku"   <?= $z['status']==='u_toku'  ?'selected':'' ?>>U toku</option>
                     <option value="zavrseno" <?= $z['status']==='zavrseno'?'selected':'' ?>>Završeno</option>
                 </select>
+                <?php if ($mozeZadati): ?>
                 <button class="btn-sm" onclick="otvoriEditZadatak(<?= $z['id'] ?>,'<?= h(addslashes($z['tekst'])) ?>','<?= h(addslashes($z['kategorija'])) ?>','<?= $z['status'] ?>','<?= $z['rok']??'' ?>','<?= $z['dodeljeno_id']??'' ?>')" title="Izmeni">✎</button>
                 <button class="btn-sm del" onclick="obrisiZadatak(<?= $z['id'] ?>)" title="Obriši">🗑</button>
+                <?php endif; ?>
             </div>
         </div>
     </div>
@@ -297,7 +297,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             <select id="z-dodeljeno"
                 style="flex:1;min-width:160px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
                 <option value="">— Dodeli osobi —</option>
-                <?php foreach ($korisnici as $u): ?><option value="<?= $u['id'] ?>"><?= h($u['ime']) ?></option><?php endforeach; ?>
+                <?php foreach ($primaoci as $u): ?><option value="<?= $u['id'] ?>"><?= h($u['ime']) ?></option><?php endforeach; ?>
             </select>
         </div>
         <div id="z-add-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none;"></div>
@@ -341,7 +341,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             <select id="z-edit-dodeljeno"
                 style="flex:1;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
                 <option value="">— Dodeli osobi</option>
-                <?php foreach ($korisnici as $u): ?><option value="<?= $u['id'] ?>"><?= h($u['ime']) ?></option><?php endforeach; ?>
+                <?php foreach ($primaoci as $u): ?><option value="<?= $u['id'] ?>"><?= h($u['ime']) ?></option><?php endforeach; ?>
             </select>
         </div>
         <div id="z-edit-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none;"></div>

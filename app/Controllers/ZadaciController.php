@@ -7,6 +7,10 @@ use Models\Korisnik;
 
 class ZadaciController extends \Core\Controller
 {
+    // Zadatke zadaju (i menjaju/brišu) samo ove uloge; primaju ih samo ove.
+    const ZADACI_ZADAJU  = ['Direktor', 'Inženjer na gradilištu'];
+    const ZADACI_PRIMAJU = ['AT', 'AF'];
+
     private $db;
 
     public function __construct()
@@ -120,6 +124,12 @@ if ($filters['status'] === '') {
         $kategorije = InterniZadatak::getKategorije();
         $korisnici  = Korisnik::getAll();
 
+        // Ko sme da zadaje (vidi "+ Novi zadatak", ✎, 🗑) i lista primalaca za dodelu
+        $mozeZadati = in_array(Auth::uloga(), self::ZADACI_ZADAJU, true);
+        $primaoci   = array_values(array_filter($korisnici, function($u) {
+            return !empty($u['aktivan']) && in_array($u['uloga'], self::ZADACI_PRIMAJU, true);
+        }));
+
         // Brojači prate prikazani opseg (isti scope + q + kategorija, sve statuse)
         $scopeBase = InterniZadatak::getAll([
             'q'          => $filters['q'],
@@ -132,8 +142,8 @@ if ($filters['status'] === '') {
         $zavrseno = count(array_filter($scopeBase, fn($z) => $z['status'] === 'zavrseno'));
 
         $this->view('zadaci/index', compact(
-            'zadaci', 'kategorije', 'korisnici', 'filters',
-            'svi', 'otvoreno', 'u_toku', 'zavrseno', 'uid',
+            'zadaci', 'kategorije', 'korisnici', 'primaoci', 'filters',
+            'svi', 'otvoreno', 'u_toku', 'zavrseno', 'uid', 'mozeZadati',
             'stranica', 'po_stranici', 'ukupno', 'zsort'
         ));
     }
@@ -145,6 +155,7 @@ if ($filters['status'] === '') {
 
         switch ($action) {
             case 'zadatak_add':
+                $this->requireZadaje();
                 $tekst = trim($_POST['tekst'] ?? '');
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je obavezan.']);
                 $newId = InterniZadatak::create([
@@ -194,6 +205,7 @@ if ($filters['status'] === '') {
                 break;
 
             case 'zadatak_edit':
+                $this->requireZadaje();
                 $tekst = trim($_POST['tekst'] ?? '');
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je obavezan.']);
                 InterniZadatak::update($id, [
@@ -221,12 +233,20 @@ if ($filters['status'] === '') {
                 break;
 
             case 'zadatak_delete':
+                $this->requireZadaje();
                 InterniZadatak::delete($id);
                 $this->json(['ok' => true]);
                 break;
 
             default:
                 $this->json(['ok' => false, 'err' => 'Nepoznata akcija.']);
+        }
+    }
+
+    private function requireZadaje(): void
+    {
+        if (!in_array(Auth::uloga(), self::ZADACI_ZADAJU, true)) {
+            $this->json(['ok' => false, 'err' => 'Nemate pravo da zadajete zadatke.']);
         }
     }
 }
