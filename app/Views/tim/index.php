@@ -16,16 +16,21 @@
     </thead>
     <tbody>
     <?php
-    // Vrednost koja se čuva => naziv koji se prikazuje. "Električar" zadržava
-    // staru vrednost "Elektricar" da postojeći električari ostanu netaknuti.
+    // Vrednost koja se čuva => naziv koji se prikazuje. Stari nalozi sa
+    // vrednošću "Elektricar" prikazuju se kao "(stara)" dok ih ne prebaciš
+    // na jedan od novih naziva.
     $uloge_opcije = [
-        'Direktor'               => 'Direktor',
-        'AT'                     => 'AT',
-        'AF'                     => 'AF',
-        'Inženjer na gradilištu' => 'Inženjer na gradilištu',
-        'Elektricar'             => 'Električar',
-        'Pomoćni radnik'         => 'Pomoćni radnik',
+        'Direktor'                  => 'Direktor',
+        'AT'                        => 'AT',
+        'AF'                        => 'AF',
+        'Inženjer na gradilištu'    => 'Inženjer na gradilištu',
+        'Rukovodilac operative'     => 'Rukovodilac operative',
+        'Monter poslovođa'          => 'Monter poslovođa',
+        'Zamenik montera poslovođe' => 'Zamenik montera poslovođe',
+        'Monter'                    => 'Monter',
+        'Pomoćni radnik'            => 'Pomoćni radnik',
     ];
+    $uloga_default = 'Inženjer na gradilištu'; // podrazumevana uloga u formi za dodavanje
     ?>
     <?php foreach ($korisnici as $i => $u): ?>
     <tr id="tim-row-<?= $u['id'] ?>">
@@ -103,12 +108,9 @@
     <div class="tim-form-group"><label>Lozinka admin panela (min. 6)</label><input type="password" id="tim-pass" placeholder="••••••••"></div>
     <div class="tim-form-group"><label>Uloga</label>
       <select id="tim-uloga">
-        <option value="Direktor">Direktor</option>
-        <option value="AT">AT</option>
-        <option value="AF">AF</option>
-        <option value="Inženjer na gradilištu" selected>Inženjer na gradilištu</option>
-        <option value="Elektricar">Električar</option>
-        <option value="Pomoćni radnik">Pomoćni radnik</option>
+        <?php foreach ($uloge_opcije as $val => $lab): ?>
+        <option value="<?= h($val) ?>" <?= $val === $uloga_default ? 'selected':'' ?>><?= h($lab) ?></option>
+        <?php endforeach; ?>
       </select>
     </div>
     <div class="tim-form-group"><label>Primarni kanal notifikacija</label>

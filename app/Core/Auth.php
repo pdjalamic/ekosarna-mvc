@@ -7,8 +7,8 @@ class Auth
     // skup ovlašćenja; stari nazivi (Administrator/Operater/Elektricar) ostaju
     // važeći radi postojećih naloga.
     public const ULOGE_ADMIN      = ['Direktor', 'AT', 'AF', 'Administrator'];
-    public const ULOGE_OPERATER   = ['Inženjer na gradilištu', 'Operater'];
-    public const ULOGE_ELEKTRICAR = ['Električar', 'Pomoćni radnik', 'Elektricar'];
+    public const ULOGE_OPERATER   = ['Inženjer na gradilištu', 'Rukovodilac operative', 'Operater'];
+    public const ULOGE_ELEKTRICAR = ['Monter poslovođa', 'Zamenik montera poslovođe', 'Monter', 'Pomoćni radnik', 'Elektricar'];
 
     public static function start(): void
     {
