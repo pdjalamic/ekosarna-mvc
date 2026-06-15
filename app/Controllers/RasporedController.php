@@ -16,7 +16,7 @@ class RasporedController extends \Core\Controller
     {
         Auth::requireKancelarija();
 
-        $boje = ['#1a3a6e', '#2563eb', '#7c3aed', '#0891b2', '#059669'];
+        $boje = ['#1a3a6e', '#2563eb', '#7c3aed', '#0891b2', '#059669', '#b45309'];
 
         // Ako nema datum parametra, nađi nedelju sa najnovijim unosom
         if (!isset($_GET['datum'])) {
