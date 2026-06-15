@@ -101,6 +101,8 @@ $gradilista_json = json_encode($gradilista);
             <?php endif; ?>
             <?php if ($jeOdgovoran): ?>
             <div style="margin-top:6px;font-size:11px;color:#b45309;background:#fffbeb;border-radius:5px;padding:3px 9px;display:inline-block;">📦 Ti si odgovoran za unos materijala</div>
+            <?php elseif (!empty($s['odgovoran_id']) && !empty($s['odgovoran_ime'])): ?>
+            <div style="margin-top:6px;font-size:11px;color:#64748b;background:#f1f5f9;border-radius:5px;padding:3px 9px;display:inline-block;">📦 <?= h($s['odgovoran_ime']) ?> odgovoran za unos materijala</div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>

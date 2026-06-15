@@ -74,7 +74,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
                 <th style="width:130px;">Dan</th>
                 <th style="width:170px;">Gradilište</th>
                 <th>Zadatak</th>
-                <th style="width:280px;">Električari</th>
+                <th style="width:280px;">Ekipa</th>
                 <th style="width:120px;text-align:right;"></th>
             </tr>
         </thead>
@@ -201,6 +201,17 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             </select>
         </div>
         <div class="tim-form-group">
+            <label>Ekipa i vreme rada</label>
+            <select id="rs-dodaj-radnika" onchange="if(this.value){dodajRadnika(this.value);this.value='';}"
+                style="border:1.5px solid var(--light2);border-radius:7px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;width:100%;margin:6px 0;cursor:pointer;font-family:inherit;">
+                <option value="">+ Dodaj radnika</option>
+                <?php foreach ($elektricari as $e): ?>
+                <option value="<?= $e['id'] ?>">👷 <?= h($e['ime']) ?></option>
+                <?php endforeach; ?>
+            </select>
+            <div id="rs-ekipa-lista" style="display:flex;flex-direction:column;gap:8px;"></div>
+        </div>
+        <div class="tim-form-group">
             <label>Opis zadatka</label>
             <div style="position:relative;">
                 <textarea id="rs-opis" rows="3"
@@ -208,27 +219,6 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
                     placeholder="Šta treba uraditi..."></textarea>
                 <button type="button" onclick="startMic('rs-opis', this)" id="mic-rs-opis"
                     style="position:absolute;top:8px;right:8px;background:#f1f5f9;color:#475569;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:15px;cursor:pointer;line-height:1;" title="Glasovni unos">🎤</button>
-            </div>
-        </div>
-        <div class="tim-form-group">
-            <label>Električari i vreme rada</label>
-            <div id="rs-elektricari-lista" style="display:flex;flex-direction:column;gap:8px;margin-top:6px;">
-                <?php foreach ($elektricari as $e): ?>
-                <div class="rs-el-row" id="rs-el-<?= $e['id'] ?>">
-                    <label class="rs-el-check">
-                        <input type="checkbox" class="rs-radnik-cb" value="<?= $e['id'] ?>"
-                            onchange="toggleElektricar(<?= $e['id'] ?>)">
-                        <span>👷 <?= h($e['ime']) ?></span>
-                    </label>
-                    <div class="rs-el-vreme" id="rs-vreme-<?= $e['id'] ?>" style="display:none;">
-                        <input type="time" id="rs-vod-<?= $e['id'] ?>" value="07:00"
-                            style="border:1.5px solid var(--light2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:var(--light);">
-                        <span style="font-size:12px;color:var(--muted);">–</span>
-                        <input type="time" id="rs-vdo-<?= $e['id'] ?>" value="16:00"
-                            style="border:1.5px solid var(--light2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:var(--light);">
-                    </div>
-                </div>
-                <?php endforeach; ?>
             </div>
         </div>
 
@@ -242,7 +232,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
         </div>
 
         <div style="border-top:1px solid var(--light2);padding-top:14px;margin-top:8px;">
-            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--blue);display:block;margin-bottom:8px;">Obaveštenje električarima</label>
+            <label style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--blue);display:block;margin-bottom:8px;">Obaveštenje ekipi</label>
             <div style="display:flex;flex-direction:column;gap:8px;">
                 <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;">
                     <input type="radio" name="rs_obavesti" value="odmah" checked> Obavesti odmah
@@ -309,6 +299,9 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 .rs-el-row.active { border-color:var(--bluem);background:#eff6ff; }
 .rs-el-check { display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:500;flex:1; }
 .rs-el-vreme { display:flex;align-items:center;gap:6px; }
+.rs-el-name { flex:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500; }
+.rs-el-remove { background:none;border:none;color:#dc2626;cursor:pointer;font-size:15px;line-height:1;padding:4px 7px;border-radius:6px; }
+.rs-el-remove:hover { background:#fee2e2; }
 </style>
 
 <script>
@@ -318,41 +311,92 @@ var _rsDanId         = null;
 var _rsPorukStavkaId = 0;
 var _rsPorukeInterval = null;
 var _rsPendingData   = null;
+var _rsVremena       = {};
 
-function toggleElektricar(eid) {
-    var cb    = document.querySelector('.rs-radnik-cb[value="'+eid+'"]');
-    var row   = document.getElementById('rs-el-' + eid);
-    var vreme = document.getElementById('rs-vreme-' + eid);
-    if (cb.checked) { row.classList.add('active'); vreme.style.display = 'flex'; }
-    else { row.classList.remove('active'); vreme.style.display = 'none'; }
+function osveziDodajMeni() {
+    var sel = document.getElementById('rs-dodaj-radnika');
+    var dodati = {};
+    document.querySelectorAll('#rs-ekipa-lista .rs-el-row').forEach(function(r) { dodati[r.dataset.id] = true; });
+    sel.innerHTML = '<option value="">+ Dodaj radnika</option>';
+    _rsElektricari.forEach(function(e) {
+        if (!dodati[e.id]) {
+            var o = document.createElement('option');
+            o.value = e.id;
+            o.textContent = '👷 ' + e.ime;
+            sel.appendChild(o);
+        }
+    });
+}
+
+function dodajRadnika(eid, vod, vdo) {
+    eid = parseInt(eid);
+    if (!eid || document.getElementById('rs-el-' + eid)) return;
+    var e = _rsElektricari.find(function(x) { return x.id == eid; });
+    if (!e) return;
+    if (!vod) vod = (_rsVremena[eid] ? _rsVremena[eid].substring(0,5) : '07:00');
+    if (!vdo) vdo = '16:00';
+
+    var row = document.createElement('div');
+    row.className = 'rs-el-row active';
+    row.id = 'rs-el-' + eid;
+    row.dataset.id = eid;
+
+    var name = document.createElement('span');
+    name.className = 'rs-el-name';
+    name.textContent = '👷 ' + e.ime;
+
+    var vreme = document.createElement('div');
+    vreme.className = 'rs-el-vreme';
+    vreme.innerHTML =
+        '<input type="time" id="rs-vod-' + eid + '" value="' + vod + '" style="border:1.5px solid var(--light2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:var(--light);">' +
+        '<span style="font-size:12px;color:var(--muted);">–</span>' +
+        '<input type="time" id="rs-vdo-' + eid + '" value="' + vdo + '" style="border:1.5px solid var(--light2);border-radius:6px;padding:4px 8px;font-size:12px;outline:none;background:var(--light);">';
+
+    var rm = document.createElement('button');
+    rm.type = 'button';
+    rm.className = 'rs-el-remove';
+    rm.title = 'Ukloni';
+    rm.textContent = '✕';
+    rm.onclick = function() { ukloniRadnika(eid); };
+
+    row.appendChild(name);
+    row.appendChild(vreme);
+    row.appendChild(rm);
+    document.getElementById('rs-ekipa-lista').appendChild(row);
+
+    osveziDodajMeni();
+    azurirajOdgovornaSelect();
+}
+
+function ukloniRadnika(eid) {
+    var row = document.getElementById('rs-el-' + eid);
+    if (row) row.remove();
+    osveziDodajMeni();
     azurirajOdgovornaSelect();
 }
 
 function azurirajOdgovornaSelect() {
-    var checked = [];
-    document.querySelectorAll('.rs-radnik-cb:checked').forEach(function(cb) {
-        var eid = cb.value;
-        var e = _rsElektricari.find(function(x) { return x.id == eid; });
-        if (e) checked.push(e);
-    });
-
     var wrap = document.getElementById('rs-odgovoran-wrap');
     var sel  = document.getElementById('rs-odgovoran-id');
     var trenutni = sel.value;
 
     sel.innerHTML = '<option value="">— Niko nije određen —</option>';
-    checked.forEach(function(e) {
-        var opt = document.createElement('option');
-        opt.value = e.id;
-        opt.textContent = '👷 ' + e.ime;
-        sel.appendChild(opt);
+    var rows = document.querySelectorAll('#rs-ekipa-lista .rs-el-row');
+    rows.forEach(function(r) {
+        var e = _rsElektricari.find(function(x) { return x.id == r.dataset.id; });
+        if (e) {
+            var opt = document.createElement('option');
+            opt.value = e.id;
+            opt.textContent = '👷 ' + e.ime;
+            sel.appendChild(opt);
+        }
     });
 
-    if (trenutni && checked.find(function(e) { return e.id == trenutni; })) {
+    if (trenutni && document.getElementById('rs-el-' + trenutni)) {
         sel.value = trenutni;
     }
 
-    wrap.style.display = checked.length > 0 ? 'block' : 'none';
+    wrap.style.display = rows.length > 0 ? 'block' : 'none';
 }
 
 function resetModal() {
@@ -363,18 +407,9 @@ function resetModal() {
     document.querySelector('input[name="rs_obavesti"][value="odmah"]').checked = true;
     document.getElementById('rs-odgovoran-id').value = '';
     document.getElementById('rs-odgovoran-wrap').style.display = 'none';
-    _rsElektricari.forEach(function(e) {
-        var cb = document.querySelector('.rs-radnik-cb[value="'+e.id+'"]');
-        if (cb) cb.checked = false;
-        var row = document.getElementById('rs-el-' + e.id);
-        if (row) row.classList.remove('active');
-        var vreme = document.getElementById('rs-vreme-' + e.id);
-        if (vreme) vreme.style.display = 'none';
-        var vod = document.getElementById('rs-vod-' + e.id);
-        if (vod) vod.value = '07:00';
-        var vdo = document.getElementById('rs-vdo-' + e.id);
-        if (vdo) vdo.value = '16:00';
-    });
+    _rsVremena = {};
+    document.getElementById('rs-ekipa-lista').innerHTML = '';
+    osveziDodajMeni();
 }
 
 document.querySelectorAll('input[name="rs_obavesti"]').forEach(function(r) {
@@ -412,10 +447,7 @@ function openDodajStavku(datum, danId, danIndex) {
     .then(r => r.json())
     .then(d => {
         if (d.ok && d.vremena) {
-            Object.keys(d.vremena).forEach(function(eid) {
-                var vod = document.getElementById('rs-vod-' + eid);
-                if (vod && d.vremena[eid]) vod.value = d.vremena[eid].substring(0,5);
-            });
+            _rsVremena = d.vremena;
         }
     });
 
@@ -440,24 +472,18 @@ function openIzmeniStavku(stavkaId, danIndex) {
         document.getElementById('rs-dan-id').value    = s.dan_id || '';
 
         (s.radnici || []).forEach(function(r) {
-            var cb = document.querySelector('.rs-radnik-cb[value="'+r.radnik_id+'"]');
-            if (cb) {
-                cb.checked = true;
-                toggleElektricar(r.radnik_id);
-                var vod = document.getElementById('rs-vod-' + r.radnik_id);
-                var vdo = document.getElementById('rs-vdo-' + r.radnik_id);
-                if (vod && r.vreme_od) vod.value = r.vreme_od.substring(0,5);
-                if (vdo && r.vreme_do) vdo.value = r.vreme_do.substring(0,5);
-            }
+            dodajRadnika(
+                r.radnik_id,
+                r.vreme_od ? r.vreme_od.substring(0,5) : '07:00',
+                r.vreme_do ? r.vreme_do.substring(0,5) : '16:00'
+            );
         });
 
-        // Postavi odgovornog nakon što su čekboxovi postavljeni
-        setTimeout(function() {
-            azurirajOdgovornaSelect();
-            if (s.odgovoran_id) {
-                document.getElementById('rs-odgovoran-id').value = s.odgovoran_id;
-            }
-        }, 30);
+        // Postavi odgovornog nakon što su radnici dodati
+        azurirajOdgovornaSelect();
+        if (s.odgovoran_id) {
+            document.getElementById('rs-odgovoran-id').value = s.odgovoran_id;
+        }
 
         document.getElementById('rs-modal').style.display = 'flex';
     });
@@ -465,8 +491,8 @@ function openIzmeniStavku(stavkaId, danIndex) {
 
 function skupiRadnike() {
     var radnici = [];
-    document.querySelectorAll('.rs-radnik-cb:checked').forEach(function(cb) {
-        var eid = cb.value;
+    document.querySelectorAll('#rs-ekipa-lista .rs-el-row').forEach(function(row) {
+        var eid = row.dataset.id;
         radnici.push({
             id:       parseInt(eid),
             vreme_od: (document.getElementById('rs-vod-' + eid) || {}).value || '07:00',
@@ -484,7 +510,7 @@ function sacuvajStavku() {
 
     var radnici = skupiRadnike();
     if (radnici.length === 0) {
-        err.textContent = 'Izaberite bar jednog električara.';
+        err.textContent = 'Dodajte bar jednog radnika.';
         err.style.display = 'block';
         return;
     }
@@ -532,7 +558,7 @@ function potvrdiSacuvaj() {
 }
 
 function obrisiStavku(id) {
-    if (!confirm('Obrisati ovu stavku? Električari će biti obavešteni o otkazu.')) return;
+    if (!confirm('Obrisati ovu stavku? Ekipa će biti obaveštena o otkazu.')) return;
     var fd = new FormData();
     fd.append('_action', 'raspored_obrisi_stavku');
     fd.append('id', id);

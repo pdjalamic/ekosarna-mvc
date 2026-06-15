@@ -44,12 +44,14 @@ while ($dodato < 4) {
                        rd.boja,
                        rd.datum AS dan_datum,
                        rr.vreme_od,
-                       rr.vreme_do
+                       rr.vreme_do,
+                       ko.ime AS odgovoran_ime
                 FROM raspored_radnici rr
                 JOIN raspored_stavke rs  ON rr.stavka_id = rs.id
                 JOIN raspored_dani rd    ON rs.dan_id = rd.id
                 JOIN radne_nedelje rn    ON rd.nedelja_id = rn.id
                 LEFT JOIN gradilista g   ON rs.gradiliste_id = g.id
+                LEFT JOIN admin_korisnici ko ON rs.odgovoran_id = ko.id
                 WHERE rr.radnik_id = ? AND rd.datum = ?
                 ORDER BY rr.vreme_od ASC, rs.id ASC
             ");

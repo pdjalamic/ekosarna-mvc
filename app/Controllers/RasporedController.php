@@ -105,14 +105,16 @@ class RasporedController extends \Core\Controller
             }
         }
 
-        $uloge_elektricar = Auth::ULOGE_ELEKTRICAR;
-        $ph_elektricar = implode(',', array_fill(0, count($uloge_elektricar), '?'));
+        // Unos materijala / dodela u raspored: teren + gradilište
+        // (operativa + terenske uloge), bez admina (Direktor/AT/AF).
+        $uloge_raspored = array_merge(Auth::ULOGE_OPERATER, Auth::ULOGE_ELEKTRICAR);
+        $ph_elektricar = implode(',', array_fill(0, count($uloge_raspored), '?'));
         $stmt_elektricari = $this->db->prepare("
             SELECT id, ime FROM admin_korisnici
             WHERE uloga IN ($ph_elektricar) AND aktivan = 1
             ORDER BY ime
         ");
-        $stmt_elektricari->execute($uloge_elektricar);
+        $stmt_elektricari->execute($uloge_raspored);
         $elektricari = $stmt_elektricari->fetchAll(\PDO::FETCH_ASSOC);
 
         $gradilista = \Controllers\GradilistaController::getAktivna();
@@ -177,6 +179,7 @@ class RasporedController extends \Core\Controller
                 $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
+                $odgovoran_ime = $this->imeRadnika($odgovoran_id);
 
                 if (!$dan_id) $this->json(['ok' => false, 'err' => 'Nema dana.']);
 
@@ -233,7 +236,11 @@ class RasporedController extends \Core\Controller
                     $datum_fmt = date('d.m.Y', strtotime($danInfo['datum']));
                     $jeOdgovoran = ($odgovoran_id && $odgovoran_id === $radnik_id);
                     $poruka = "📋 Dodeljen si na zadatak: {$opis}\n🏗️ Gradilište: {$gNaziv}\n📅 Datum: {$datum_fmt}\n🕐 Vreme: " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
-                    if ($jeOdgovoran) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                    if ($jeOdgovoran) {
+                        $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                    } elseif ($odgovoran_id && $odgovoran_ime !== '') {
+                        $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
+                    }
 
                     if ($obavesti_tip === 'odmah') {
                         $this->notifikuj($radnik_id, Auth::ime(), $poruka);
@@ -252,6 +259,7 @@ class RasporedController extends \Core\Controller
                 $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
+                $odgovoran_ime = $this->imeRadnika($odgovoran_id);
 
                 // Staro stanje
                 $staroStmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE id=?");
@@ -337,7 +345,11 @@ class RasporedController extends \Core\Controller
                     $izmene = [];
                     if (!isset($stariRadnici[$radnik_id])) {
                         $poruka = "✅ Dodeljen si na zadatak:\n📋 {$opis}\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n📅 {$datum_fmt}\n🕐 " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
-                        if ($odgovoran_id && $odgovoran_id == $radnik_id) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                        if ($odgovoran_id && $odgovoran_id == $radnik_id) {
+                            $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                        } elseif ($odgovoran_id && $odgovoran_ime !== '') {
+                            $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
+                        }
                     } else {
                         $star = $stariRadnici[$radnik_id];
                         if ($staro['gradiliste_id'] != $gradiliste_id) {
@@ -366,7 +378,11 @@ class RasporedController extends \Core\Controller
 if (empty($izmene)) continue;
 
 $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $gStaroNaziv) . "\n" . implode("\n", $izmene);
-                        if ($odgovoran_id && $odgovoran_id == $radnik_id) $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                        if ($odgovoran_id && $odgovoran_id == $radnik_id) {
+                            $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+                        } elseif ($odgovoran_id && $odgovoran_ime !== '') {
+                            $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
+                        }
                     }
 
                     if ($obavesti_tip === 'odmah') {
@@ -596,6 +612,14 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
             default:
                 $this->json(['ok' => false, 'err' => 'Nepoznata akcija.']);
         }
+    }
+
+    private function imeRadnika(?int $id): string
+    {
+        if (!$id) return '';
+        $stmt = $this->db->prepare("SELECT ime FROM admin_korisnici WHERE id=?");
+        $stmt->execute([$id]);
+        return (string)($stmt->fetchColumn() ?: '');
     }
 
     private function proveritPreklapanje(int $radnik_id, int $dan_id, int $iskljuci_stavku_id, ?string $vreme_od, ?string $vreme_do): ?string
