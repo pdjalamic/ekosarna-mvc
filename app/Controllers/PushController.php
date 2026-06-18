@@ -52,51 +52,83 @@ class PushController extends \Core\Controller
     }
 
     /**
-     * Šalje push notifikaciju jednom subscriberu
-     * Koristi web-push-php biblioteku
+     * Šalje push notifikaciju jednom subscriberu.
+     * Koristi samostalni Core\PushSender (samo openssl + curl, bez Composer-a).
      */
     public static function sendToSubscription(array $sub, array $payload): bool
     {
-        $webpushDir = ROOT . '/webpush';
-        if (!file_exists($webpushDir . '/WebPush.php')) {
-            error_log('[Push] webpush biblioteka nije instalirana');
-            return false;
+        $r = \Core\PushSender::send(
+            $sub['endpoint'] ?? '',
+            $sub['p256dh']   ?? '',
+            $sub['auth_key'] ?? '',
+            $payload
+        );
+
+        if (!$r['success']) {
+            error_log('[Push] Slanje neuspešno: ' . ($r['reason'] ?? '?'));
+            // Istekla/nevažeća pretplata — obriši je da ubuduće ne smeta
+            if (\Core\PushSender::isExpiredStatus($r['status']) && !empty($sub['endpoint'])) {
+                PushSubscription::delete($sub['endpoint']);
+            }
         }
+        return $r['success'];
+    }
 
-        require_once $webpushDir . '/Utils.php';
-        require_once $webpushDir . '/Encryption.php';
-        require_once $webpushDir . '/VAPID.php';
-        require_once $webpushDir . '/Subscription.php';
-        require_once $webpushDir . '/WebPush.php';
+    /**
+     * Šalje push notifikaciju listi korisnika (svim njihovim uređajima).
+     * Tiha je — nikad ne baca grešku da ne bi srušila akciju koja je pozvala.
+     * Vraća broj uspešno poslatih notifikacija.
+     */
+    public static function notifyUsers(array $userIds, array $payload): int
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (!$userIds) return 0;
 
+        $sent = 0;
         try {
-            $auth = [
-                'VAPID' => [
-                    'subject'    => VAPID_SUBJECT,
-                    'publicKey'  => VAPID_PUBLIC_KEY,
-                    'privateKey' => VAPID_PRIVATE_KEY,
-                ],
-            ];
-
-            $webPush = new \Minishlink\WebPush\WebPush($auth);
-            $subscription = \Minishlink\WebPush\Subscription::create([
-                'endpoint' => $sub['endpoint'],
-                'keys'     => [
-                    'p256dh' => $sub['p256dh'],
-                    'auth'   => $sub['auth_key'],
-                ],
-            ]);
-
-            $report = $webPush->sendOneNotification(
-                $subscription,
-                json_encode($payload)
-            );
-
-            return $report->isSuccess();
-        } catch (\Exception $e) {
-            error_log('[Push] Greška: ' . $e->getMessage());
-            return false;
+            foreach ($userIds as $uid) {
+                foreach (PushSubscription::getByKorisnik($uid) as $sub) {
+                    $ok = self::sendToSubscription([
+                        'endpoint' => $sub['endpoint'],
+                        'p256dh'   => $sub['p256dh'],
+                        'auth_key' => $sub['auth_key'],
+                    ], $payload);
+                    if ($ok) $sent++;
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[Push notifyUsers] ' . $e->getMessage());
         }
+        self::logSend($payload, count($userIds), $sent);
+        return $sent;
+    }
+
+    /** Upisuje jednu liniju u logs/push_send.log */
+    private static function logSend(array $payload, int $primalaca, int $poslato): void
+    {
+        $naslov = $payload['title'] ?? 'Push';
+        $tekst  = mb_substr($payload['body'] ?? '', 0, 60);
+        $line = '[' . date('Y-m-d H:i:s') . '] ' . $naslov
+              . ' — primalaca: ' . $primalaca . ', poslato: ' . $poslato
+              . ($tekst !== '' ? ' — "' . $tekst . '"' : '')
+              . PHP_EOL;
+        $logFile = ROOT . '/logs/push_send.log';
+        if (!is_dir(dirname($logFile))) @mkdir(dirname($logFile), 0755, true);
+        @file_put_contents($logFile, $line, FILE_APPEND);
+    }
+
+    /** Admin pregled push log-a (?page=push-log) */
+    public function logView(): void
+    {
+        Auth::requireAdmin();
+        $logFile = ROOT . '/logs/push_send.log';
+        $linije  = [];
+        if (is_file($logFile)) {
+            $linije = array_reverse(array_values(array_filter(
+                explode("\n", trim((string) file_get_contents($logFile)))
+            )));
+        }
+        $this->view('push/log', ['linije' => $linije]);
     }
 
     /**

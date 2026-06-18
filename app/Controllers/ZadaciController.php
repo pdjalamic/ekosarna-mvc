@@ -158,14 +158,34 @@ if ($filters['status'] === '') {
                 $this->requireZadaje();
                 $tekst = trim($_POST['tekst'] ?? '');
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je obavezan.']);
+                $dodeljeno = (int)($_POST['dodeljeno_id'] ?? 0) ?: null;
                 $newId = InterniZadatak::create([
                     'tekst'        => mb_substr($tekst, 0, 2000),
                     'kategorija'   => mb_substr(trim($_POST['kategorija'] ?? ''), 0, 100),
                     'status'       => 'otvoreno',
                     'rok'          => $_POST['rok'] ?? '',
                     'kreirao_id'   => $uid,
-                    'dodeljeno_id' => (int)($_POST['dodeljeno_id'] ?? 0) ?: null,
+                    'dodeljeno_id' => $dodeljeno,
                 ]);
+
+                // Push obaveštenje primaocima (dodeljeni, ili svi AT/AF) — osim onome ko zadaje
+                if ($dodeljeno) {
+                    $primaociIds = [$dodeljeno];
+                } else {
+                    $ph = implode(',', array_fill(0, count(self::ZADACI_PRIMAJU), '?'));
+                    $st = $this->db->prepare("SELECT id FROM admin_korisnici WHERE uloga IN ($ph) AND aktivan=1");
+                    $st->execute(self::ZADACI_PRIMAJU);
+                    $primaociIds = $st->fetchAll(\PDO::FETCH_COLUMN);
+                }
+                $primaociIds = array_filter($primaociIds, fn($x) => (int)$x !== (int)$uid);
+                PushController::notifyUsers($primaociIds, [
+                    'title' => '📋 Novi zadatak',
+                    'body'  => mb_substr($tekst, 0, 120),
+                    'url'   => BASE_URL . '/?page=zadaci',
+                    'tag'   => 'zadatak-' . $newId,
+                    'icon'  => BASE_URL . '/public/icon-192.png',
+                ]);
+
                 $this->json(['ok' => true, 'id' => $newId]);
                 break;
 

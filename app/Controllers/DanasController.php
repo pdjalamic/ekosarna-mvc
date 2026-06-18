@@ -5,6 +5,9 @@ use Core\Auth;
 
 class DanasController extends \Core\Controller
 {
+    // Ko dobija push obaveštenje kada stigne nova nabavka
+    const NABAVKA_NOTIFIKACIJE = ['AT', 'AF'];
+
     private $db;
 
     public function __construct()
@@ -495,6 +498,19 @@ PROMPT;
                         (stavka_id, radnik_id, gradiliste_id, gradiliste_naziv, tekst_original, stavke, status, prioritet, kreator_id)
                     VALUES (?, ?, ?, ?, ?, ?, 'novo', ?, ?)
                 ")->execute([$stavka_id, $uid, $grad_id, $grad_naziv, $tekst_original, $meta_json, $prioritet, $uid]);
+
+                // Push obaveštenje za AT/AF (osim onome ko je uneo nabavku)
+                $ph = implode(',', array_fill(0, count(self::NABAVKA_NOTIFIKACIJE), '?'));
+                $st = $this->db->prepare("SELECT id FROM admin_korisnici WHERE uloga IN ($ph) AND aktivan=1");
+                $st->execute(self::NABAVKA_NOTIFIKACIJE);
+                $nabavkaIds = array_filter($st->fetchAll(\PDO::FETCH_COLUMN), fn($x) => (int)$x !== (int)$uid);
+                PushController::notifyUsers($nabavkaIds, [
+                    'title' => '🛒 Nova nabavka',
+                    'body'  => mb_substr($tekst_original, 0, 120),
+                    'url'   => BASE_URL . '/?page=nabavka',
+                    'tag'   => 'nabavka-' . $uid . '-' . time(),
+                    'icon'  => BASE_URL . '/public/icon-192.png',
+                ]);
 
                 $this->json(['ok' => true]);
                 break;

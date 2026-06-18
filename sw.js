@@ -1,5 +1,5 @@
 // Ekošarna Service Worker — Push Notifikacije
-const CACHE_NAME = 'ekosarna-v1';
+const CACHE_NAME = 'ekosarna-v2';
 
 // Instalacija
 self.addEventListener('install', function(e) {
@@ -8,6 +8,12 @@ self.addEventListener('install', function(e) {
 
 self.addEventListener('activate', function(e) {
   e.waitUntil(clients.claim());
+});
+
+// Fetch handler (pass-through) — neophodan da bi Chrome dozvolio instalaciju PWA
+self.addEventListener('fetch', function(e) {
+  // Ne presrećemo ništa; samo prisustvo ovog handlera je uslov za instalaciju.
+  return;
 });
 
 // Prima push notifikaciju
@@ -19,14 +25,17 @@ self.addEventListener('push', function(e) {
   var body    = data.body    || '';
   var url     = data.url     || '/mvc/';
   var icon    = data.icon    || '/mvc/public/icon-192.png';
-  var badge   = data.badge   || '/mvc/public/icon-192.png';
-  var tag     = data.tag     || 'ekosarna-notif';
+  var badge   = data.badge   || '/mvc/public/badge-72.png';
+  // Jedinstven tag po notifikaciji — inače Android tiho zameni prethodnu
+  // (koja zbog requireInteraction ostaje u traci) umesto da iskoči gore.
+  var tag     = data.tag     || ('ekosarna-' + Date.now());
 
   var options = {
     body:    body,
     icon:    icon,
     badge:   badge,
     tag:     tag,
+    renotify: true,
     data:    { url: url },
     vibrate: [200, 100, 200],
     requireInteraction: true,
@@ -54,16 +63,23 @@ self.addEventListener('notificationclick', function(e) {
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(function(clientList) {
-        // Ako je tab već otvoren — fokusiraj ga
+        // Ako je prozor/tab već otvoren — fokusiraj ga pa probaj da navigiraš.
+        // navigate() radi samo na prozoru kojim SW upravlja; ako padne (npr. na
+        // Androidu kad PWA prozor nije pod kontrolom), otvori novi prozor kao rezervu.
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
           if (client.url.indexOf('/mvc/') !== -1 && 'focus' in client) {
-            client.focus();
-            client.navigate(url);
-            return;
+            return client.focus().then(function(c) {
+              if (c && c.navigate) {
+                return c.navigate(url).catch(function() {
+                  return clients.openWindow ? clients.openWindow(url) : null;
+                });
+              }
+              return clients.openWindow ? clients.openWindow(url) : null;
+            });
           }
         }
-        // Inače otvori novi tab
+        // Inače otvori novi prozor
         if (clients.openWindow) {
           return clients.openWindow(url);
         }
