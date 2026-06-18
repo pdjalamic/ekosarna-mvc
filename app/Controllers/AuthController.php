@@ -21,8 +21,13 @@ class AuthController extends \Core\Controller
                 $user = Korisnik::findByUsername($_POST['username'] ?? '');
                 if ($user && password_verify($_POST['password'] ?? '', $user['password_hash'])) {
                     Auth::login($user);
-                    $redirect = \Core\Auth::isElektricar() ? 'danas' : 'raspored';
-		header('Location: ' . BASE_URL . '/?page=' . $redirect);
+                    // Telefon: vodi na home screen (mreža ikonica); desktop kao pre
+                    $isMobile = (bool) preg_match(
+                        '/Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|BlackBerry/i',
+                        $_SERVER['HTTP_USER_AGENT'] ?? ''
+                    );
+                    $redirect = $isMobile ? 'home' : (\Core\Auth::isElektricar() ? 'danas' : 'raspored');
+                    header('Location: ' . BASE_URL . '/?page=' . $redirect);
                     exit;
                 }
                 $error = 'Pogrešno korisničko ime ili lozinka.';

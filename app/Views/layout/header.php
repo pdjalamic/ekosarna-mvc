@@ -11,11 +11,26 @@
 <link rel="stylesheet" href="<?= BASE_URL ?>/public/css/admin.css">
 </head>
 <body>
+<?php
+  // Top bar (mobilni): inicijali za avatar + broj nepročitanih poruka
+  $tb_ime = \Core\Auth::ime();
+  $tb_ini = '';
+  foreach (preg_split('/\s+/', trim($tb_ime)) as $tb_w) { if ($tb_w !== '') $tb_ini .= mb_strtoupper(mb_substr($tb_w, 0, 1)); }
+  $tb_ini = mb_substr($tb_ini, 0, 2) ?: 'EK';
+  $tb_poruke = \Controllers\PorukeController::neprocitane(\Core\Auth::id());
+?>
 <div class="mob-header">
-  <div class="mob-logo">Ekošarna<span>.</span></div>
-  <button class="mob-burger" onclick="toggleSidebar()" aria-label="Meni">
-    <span></span><span></span><span></span>
-  </button>
+  <div style="display:flex;align-items:center;gap:10px;">
+    <a href="<?= BASE_URL ?>/?page=home" style="display:flex;align-items:center;">
+      <img src="<?= BASE_URL ?>/public/img/mika_logo_3.png" alt="Ekošarna" style="height:26px;width:auto;display:block;">
+    </a>
+  </div>
+  <div style="display:flex;align-items:center;gap:16px;">
+    <a href="<?= BASE_URL ?>/?page=poruke" style="position:relative;display:flex;color:#fff;" aria-label="Poruke">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 8A6 6 0 006 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 01-3.46 0"/></svg>
+      <span class="badge" id="topbar-notif-badge" style="position:absolute;top:-7px;right:-8px;min-width:17px;height:17px;padding:0 4px;border-radius:99px;background:#e53935;color:#fff;font-size:10px;font-weight:800;display:<?= $tb_poruke > 0 ? 'flex' : 'none' ?>;align-items:center;justify-content:center;"><?= (int)$tb_poruke ?></span>
+    </a>
+  </div>
 </div>
 <div class="mob-overlay" id="mob-overlay" onclick="closeSidebar()"></div>
 
@@ -151,6 +166,11 @@
       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
       Izveštaji
     </a>
+
+    <a href="<?= BASE_URL ?>/?page=push-log" class="<?= $active_page === 'push-log' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 002 2h16a2 2 0 002-2v-6l-3.45-6.89A2 2 0 0016.76 4H7.24a2 2 0 00-1.79 1.11z"/></svg>
+      Push log
+    </a>
     <?php endif; ?>
 
     <?php endif; ?>
@@ -205,6 +225,19 @@ function proveritNovePoruke() {
     if (badge) {
       if (ukupno > 0) { badge.textContent = ukupno; badge.style.display = 'inline-block'; }
       else { badge.style.display = 'none'; }
+    }
+    // Top bar zvonce (mobilni)
+    var tbb = document.getElementById('topbar-notif-badge');
+    if (tbb) {
+      if (ukupno > 0) { tbb.textContent = ukupno; tbb.style.display = 'flex'; }
+      else { tbb.style.display = 'none'; }
+    }
+    // Home screen "Poruke" pločica (ako je home strana otvorena)
+    var hbp = document.getElementById('home-badge-poruke');
+    if (hbp) {
+      var np = d.neprocitane_poruke || 0;
+      if (np > 0) { hbp.textContent = np; hbp.style.display = 'flex'; }
+      else { hbp.style.display = 'none'; }
     }
     if (d.neprocitane_raspored > 0) {
       var fd_r = new FormData();
@@ -277,6 +310,14 @@ function azurirajBadge(id, broj) {
     else { el.style.display = 'none'; }
 }
 
+// Home screen pločice koriste flex za centriranje broja
+function azurirajHomeBadge(id, broj) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    if (broj > 0) { el.textContent = broj; el.style.display = 'flex'; }
+    else { el.style.display = 'none'; }
+}
+
 function proveritBadgeve() {
     var fd = new FormData();
     fd.append('_action', 'badge_counts');
@@ -288,9 +329,13 @@ function proveritBadgeve() {
         azurirajBadge('badge-kontakt', d.kontakt || 0);
         azurirajBadge('badge-zadaci',  d.zadaci  || 0);
         azurirajBadge('badge-nabavka', d.nabavka || 0);
+        // Home screen pločice (ako je home strana otvorena)
+        azurirajHomeBadge('home-badge-kontakt', d.kontakt || 0);
+        azurirajHomeBadge('home-badge-zadaci',  d.zadaci  || 0);
+        azurirajHomeBadge('home-badge-nabavka', d.nabavka || 0);
     }).catch(function(){});
 }
 
 proveritBadgeve();
-setInterval(proveritBadgeve, 60000);
+setInterval(proveritBadgeve, 20000);
 </script>

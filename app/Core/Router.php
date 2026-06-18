@@ -43,9 +43,15 @@ class Router
             exit;
         }
 
-        // Električar može samo danas, poruke, hr i evidencija
-        if (Auth::isElektricar() && !in_array($page, ['danas', 'poruke', 'hr', 'evidencija', 'nabavka'])) {
-            header('Location: ' . BASE_URL . '/?page=danas');
+        // Telefon: landing strana je "home" (mreža ikonica); desktop ostaje kao pre
+        $isMobile = (bool) preg_match(
+            '/Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|BlackBerry/i',
+            $_SERVER['HTTP_USER_AGENT'] ?? ''
+        );
+
+        // Električar može samo home, danas, poruke, hr, evidencija, nabavka, settings i novosti
+        if (Auth::isElektricar() && !in_array($page, ['home', 'danas', 'poruke', 'hr', 'evidencija', 'nabavka', 'settings', 'novosti'])) {
+            header('Location: ' . BASE_URL . '/?page=' . ($isMobile ? 'home' : 'danas'));
             exit;
         }
 
@@ -56,6 +62,10 @@ class Router
         }
 
         match ($page) {
+            'home'        => (new \Controllers\HomeController())->index(),
+            'novosti'     => (new \Controllers\NovostiController())->index(),
+            'settings'    => (new \Controllers\SettingsController())->index(),
+            'push-log'    => (new \Controllers\PushController())->logView(),
             'kontakt'     => (new \Controllers\KontaktController())->index(),
             'tim'         => (new \Controllers\TimController())->index(),
             'imenik'      => (new \Controllers\ImenikController())->index(),
@@ -71,9 +81,11 @@ class Router
             'hr'          => isset($_GET['action']) && $_GET['action'] === 'karton'
                                  ? (new \Controllers\HrController())->karton()
                                  : (new \Controllers\HrController())->index(),
-            default       => Auth::isElektricar()
-                                 ? (new \Controllers\DanasController())->index()
-                                 : (new \Controllers\RasporedController())->index(),
+            default       => $isMobile
+                                 ? (new \Controllers\HomeController())->index()
+                                 : (Auth::isElektricar()
+                                     ? (new \Controllers\DanasController())->index()
+                                     : (new \Controllers\RasporedController())->index()),
         };
     }
 
