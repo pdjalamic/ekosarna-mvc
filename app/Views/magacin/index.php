@@ -7,6 +7,58 @@ $tabs = [
 $aktivan_tab = $_GET['tab'] ?? 'stanje';
 ?>
 
+<style>
+/* ── Mobilni: magacin tabele kao kartice (bez horizontalnog skrola) ── */
+@media (max-width:720px) {
+  .mag-card { display:block; width:100%; min-width:0 !important; }
+  .mag-card > thead { display:none; }
+  .mag-card > tbody { display:block; }
+  .mag-card > tbody > tr.rs-red {
+    display:block; background:#fff;
+    border:1.5px solid var(--light2); border-radius:12px;
+    margin-bottom:10px; padding:10px 14px;
+  }
+  .mag-card > tbody > tr > td {
+    display:block; width:auto !important; text-align:left !important;
+    padding:4px 0 !important; border:none !important; white-space:normal !important;
+  }
+  .mag-card > tbody > tr > td::before {
+    display:block; font-weight:700; color:var(--muted);
+    font-size:10px; text-transform:uppercase; letter-spacing:.04em; margin-bottom:2px;
+  }
+  .mag-card > tbody > tr > td:first-child { display:none; } /* redni broj */
+
+  /* STANJE: artikal kao naslov, brojevi u jednom redu */
+  .mag-stanje > tbody > tr.rs-red { display:flex; flex-wrap:wrap; align-items:flex-start; }
+  .mag-stanje > tbody > tr > td { flex:0 0 100%; }
+  .mag-stanje > tbody > tr > td:nth-child(2) { font-weight:700; font-size:15px; }
+  .mag-stanje > tbody > tr > td:nth-child(2)::before { display:none; }
+  .mag-stanje > tbody > tr > td:nth-child(3),
+  .mag-stanje > tbody > tr > td:nth-child(4),
+  .mag-stanje > tbody > tr > td:nth-child(5),
+  .mag-stanje > tbody > tr > td:nth-child(6) { flex:1 1 25%; text-align:center !important; }
+  .mag-stanje > tbody > tr > td:nth-child(3)::before { content:"JM"; }
+  .mag-stanje > tbody > tr > td:nth-child(4)::before { content:"Primljeno"; }
+  .mag-stanje > tbody > tr > td:nth-child(5)::before { content:"Izdato"; }
+  .mag-stanje > tbody > tr > td:nth-child(6)::before { content:"Stanje"; }
+  .mag-stanje > tbody > tr > td:nth-child(7)::before { content:"Lokacija"; }
+  .mag-stanje > tbody > tr > td:nth-child(8)::before { display:none; }
+
+  /* PRIMKE (ulaz robe): dobavljač kao naslov */
+  .mag-primke > tbody > tr > td:nth-child(3) { font-weight:700; font-size:15px; }
+  .mag-primke > tbody > tr > td:nth-child(3)::before { display:none; }
+  .mag-primke > tbody > tr > td:nth-child(2)::before { content:"Datum"; }
+  .mag-primke > tbody > tr > td:nth-child(4)::before { content:"Br. dokumenta"; }
+  .mag-primke > tbody > tr > td:nth-child(5)::before { content:"Tip"; }
+  .mag-primke > tbody > tr > td:nth-child(6)::before { content:"Stavki"; }
+  .mag-primke > tbody > tr > td:nth-child(7)::before { display:none; }
+  /* Detalj red (proširenje primke) — bez labela, nested tabela puna širina */
+  .mag-primke > tbody > tr[id^="primka-detalj-"] > td { padding:0 !important; }
+  .mag-primke > tbody > tr[id^="primka-detalj-"] > td::before { display:none; }
+  .mag-primke > tbody > tr[id^="primka-detalj-"] table { min-width:0 !important; width:100%; font-size:11px; }
+}
+</style>
+
 <div class="topbar-admin">
     <div class="page-title">🏭 Magacin</div>
 </div>
@@ -33,7 +85,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
 <?php if (empty($stanje)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema artikala na stanju.</div>
 <?php else: ?>
-    <table class="rs-tabela">
+    <table class="rs-tabela mag-card mag-stanje">
         <thead>
             <tr>
                 <th style="width:36px;text-align:center;">#</th>
@@ -78,7 +130,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
 <?php if (empty($primke)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema ulaza robe. Dodajte prvi ulaz u tabu "Novi ulaz".</div>
 <?php else: ?>
-    <table class="rs-tabela">
+    <table class="rs-tabela mag-card mag-primke">
         <thead>
             <tr>
                 <th style="width:36px;text-align:center;">#</th>

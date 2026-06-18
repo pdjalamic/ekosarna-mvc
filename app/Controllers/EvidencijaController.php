@@ -21,7 +21,8 @@ class EvidencijaController extends \Core\Controller
         $je_kancelarija = !Auth::isElektricar();
 
         $tab          = $_GET['tab']        ?? 'vreme';
-        $filter_od    = $_GET['od']         ?? date('Y-m-01');
+        // Podrazumevano: samo današnji dan (i radni sati i materijal). Filter i dalje radi za druge periode.
+        $filter_od    = $_GET['od']         ?? date('Y-m-d');
         $filter_do    = $_GET['do']         ?? date('Y-m-d');
         $filter_radnik= (int)($_GET['radnik']    ?? 0);
         $filter_grad  = (int)($_GET['gradiliste'] ?? 0);

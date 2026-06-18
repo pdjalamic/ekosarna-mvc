@@ -302,6 +302,34 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 .rs-el-name { flex:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500; }
 .rs-el-remove { background:none;border:none;color:#dc2626;cursor:pointer;font-size:15px;line-height:1;padding:4px 7px;border-radius:6px; }
 .rs-el-remove:hover { background:#fee2e2; }
+
+/* ── Mobilni: nedeljni raspored kao kartice (bez horizontalnog skrola) ── */
+@media (max-width:720px) {
+  .rs-tabela-wrap { overflow-x:visible; border:none; background:transparent; border-radius:0; }
+  .rs-tabela { display:block; width:100%; min-width:0; }
+  .rs-tabela > thead { display:none; }
+  .rs-tabela > tbody { display:block; }
+  .rs-tabela > tbody > tr {
+    display:block; background:#fff;
+    border:1.5px solid var(--light2); border-radius:12px;
+    margin-bottom:10px; padding:10px 14px;
+  }
+  .rs-tabela > tbody > tr > td {
+    display:block; width:auto !important; padding:4px 0 !important;
+    border:none !important; white-space:normal !important; vertical-align:top;
+  }
+  /* "Dan" ćelija (prepoznata po levoj obojenoj traci) — kao naslov kartice.
+     Ovo gađa i prvu stavku dana (rowspan) i prazan dan, ali NE i gradilište/opis. */
+  .rs-tabela > tbody > tr > td[style*="border-left:4px solid"] {
+    margin:-10px -14px 8px !important;
+    padding:8px 14px !important;
+    border-radius:12px 12px 0 0 !important;
+    border-bottom:1px solid var(--light2) !important;
+  }
+  /* Dugmići: levo poravnati na mobilnom */
+  .rs-tabela > tbody > tr > td[style*="text-align:right"] { text-align:left !important; }
+  .rs-tabela > tbody > tr > td[colspan] { color:var(--muted); font-style:italic; }
+}
 </style>
 
 <script>
