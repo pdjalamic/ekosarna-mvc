@@ -76,54 +76,60 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
 </div>
 
 <?php if ($aktivan_tab === 'stanje'): ?>
+<style>
+.lok-grupa { background:#fff; border:1.5px solid var(--light2); border-radius:12px; margin-bottom:10px; overflow:hidden; }
+.lok-head { display:flex; align-items:center; gap:10px; padding:13px 16px; cursor:pointer; user-select:none; }
+.lok-head:hover { background:var(--light); }
+.lok-chevron { font-size:11px; color:var(--muted); transition:transform .15s; }
+.lok-body { border-top:1px solid var(--light2); }
+.st-row { display:flex; align-items:center; gap:10px; padding:10px 16px; }
+.st-row + .st-row { border-top:1px solid var(--light2); }
+.st-row .st-ime { flex:1; min-width:0; font-size:13px; font-weight:600; word-break:break-word; }
+.st-row .st-jm  { width:48px; text-align:center; font-size:12px; color:var(--muted); }
+.st-row .st-kol { width:90px; text-align:right; font-weight:700; font-size:14px; }
+.st-row .st-akc { white-space:nowrap; }
+</style>
 <div style="margin-bottom:12px;">
     <input type="text" id="srch-stanje" placeholder="Pretraži artikal..."
         oninput="filtrirajStanje()"
-        style="border:1.5px solid var(--light2);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;width:280px;">
+        style="border:1.5px solid var(--light2);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;width:280px;max-width:100%;box-sizing:border-box;">
 </div>
-<div class="rs-tabela-wrap">
-<?php if (empty($stanje)): ?>
+
+<?php if (empty($stanjePoLokaciji)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema artikala na stanju.</div>
 <?php else: ?>
-    <table class="rs-tabela mag-card mag-stanje">
-        <thead>
-            <tr>
-                <th style="width:36px;text-align:center;">#</th>
-                <th>Artikal</th>
-                <th style="width:60px;text-align:center;">JM</th>
-                <th style="width:90px;text-align:center;">Primljeno</th>
-                <th style="width:90px;text-align:center;">Izdato</th>
-                <th style="width:90px;text-align:center;">Stanje</th>
-                <th style="width:120px;">Lokacija</th>
-                <th style="width:60px;text-align:right;"></th>
-            </tr>
-        </thead>
-        <tbody id="stanje-tbody">
-        <?php foreach ($stanje as $idx => $s): ?>
-        <tr class="stanje-red rs-red" data-naziv="<?= htmlspecialchars(strtolower($s['naziv']), ENT_QUOTES) ?>">
-            <td style="text-align:center;font-size:11px;color:var(--muted);"><?= $idx + 1 ?></td>
-            <td style="font-size:13px;">
-                <?= h($s['naziv']) ?>
-                <div style="font-size:11px;color:var(--muted);"><?= h($s['firma_naziv']) ?> · <?= $s['datum_prijema'] ? date('d.m.Y', strtotime($s['datum_prijema'])) : '' ?></div>
-            </td>
-            <td style="text-align:center;font-size:12px;color:var(--muted);"><?= h($s['jm']) ?></td>
-            <td style="text-align:center;font-size:13px;"><?= number_format($s['primljeno'], 2, ',', '.') ?></td>
-            <td style="text-align:center;font-size:13px;color:#dc2626;"><?= number_format($s['izdato'], 2, ',', '.') ?></td>
-            <td style="text-align:center;font-weight:700;font-size:13px;color:<?= $s['stanje'] > 0 ? '#059669' : '#dc2626' ?>;">
-                <?= number_format($s['stanje'], 2, ',', '.') ?>
-            </td>
-            <td style="font-size:12px;">
-                <span style="background:var(--light);border:1px solid var(--light2);border-radius:5px;padding:2px 8px;"><?= h($s['lokacija']) ?></span>
-            </td>
-            <td style="text-align:right;">
-                <button class="btn-sm" onclick="openPokret(<?= $s['id'] ?>, '<?= h(addslashes($s['naziv'])) ?>', <?= $s['stanje'] ?>, '<?= h(addslashes($s['lokacija'])) ?>')" title="Pokret">↗</button>
-            </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-    </table>
-<?php endif; ?>
+<div id="stanje-lokacije">
+<?php $li = 0; foreach ($stanjePoLokaciji as $lok => $artikli): $li++; $jeMagacin = ($lok === 'Magacin'); ?>
+    <div class="lok-grupa">
+        <div class="lok-head" onclick="toggleLok(<?= $li ?>)">
+            <span class="lok-chevron" id="lok-chev-<?= $li ?>">▶</span>
+            <span style="font-weight:800;font-size:14px;color:#1f2a44;"><?= $jeMagacin ? '🏭' : '📍' ?> <?= h($lok) ?></span>
+            <span style="margin-left:auto;color:var(--muted);font-size:12px;"><?= count($artikli) ?> art.</span>
+        </div>
+        <div class="lok-body" id="lok-body-<?= $li ?>" style="display:none;">
+            <?php foreach ($artikli as $s): ?>
+            <div class="st-row stanje-red"
+                 data-naziv="<?= htmlspecialchars($s['naziv'], ENT_QUOTES) ?>"
+                 data-naziv-lower="<?= htmlspecialchars(mb_strtolower($s['naziv']), ENT_QUOTES) ?>"
+                 data-jm="<?= htmlspecialchars($s['jm'], ENT_QUOTES) ?>"
+                 data-lokacija="<?= htmlspecialchars($lok, ENT_QUOTES) ?>"
+                 data-gradiliste="<?= (int)$s['gradiliste_id'] ?>"
+                 data-katalog="<?= (int)$s['katalog_id'] ?>"
+                 data-stanje="<?= $s['stanje'] ?>">
+                <span class="st-ime"><?= h($s['naziv']) ?></span>
+                <span class="st-jm"><?= h($s['jm']) ?></span>
+                <span class="st-kol" style="color:<?= $s['stanje'] >= 0 ? '#059669' : '#dc2626' ?>;"><?= number_format($s['stanje'], 2, ',', '.') ?></span>
+                <span class="st-akc">
+                    <button class="btn-sm" onclick="openPrenos(this)" title="Prenos na drugu lokaciju">↔</button>
+                    <button class="btn-sm" onclick="openIzmena(this)" title="Izmena stavke">✎</button>
+                </span>
+            </div>
+            <?php endforeach; ?>
+        </div>
+    </div>
+<?php endforeach; ?>
 </div>
+<?php endif; ?>
 
 <?php elseif ($aktivan_tab === 'primke'): ?>
 <div class="rs-tabela-wrap">
@@ -300,43 +306,56 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
     </div>
 </div>
 
-<!-- MODAL: Pokret ─────────────────────────────────────────── -->
-<div id="pokret-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;">
+<!-- MODAL: Prenos ─────────────────────────────────────────── -->
+<div id="prenos-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
     <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
-        <button onclick="document.getElementById('pokret-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
-        <h3 id="pokret-naslov" style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:16px;padding-right:32px;">Pokret robe</h3>
-        <input type="hidden" id="pokret-stavka-id">
-        <div class="tim-form-group">
-            <label>Tip pokreta</label>
-            <select id="pokret-tip" onchange="azurirajPokretFormu()" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
-                <option value="izlaz">↗ Izlaz na gradilište</option>
-                <option value="prenos">↔ Prenos na drugu lokaciju</option>
-                <option value="povrat">↩ Povrat u magacin</option>
-            </select>
-        </div>
-        <div class="tim-form-group">
-            <label>Količina <span id="pokret-max-label" style="color:var(--muted);font-size:11px;"></span></label>
-            <input type="number" id="pokret-kolicina" min="0.01" step="0.01" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
-        </div>
-        <div id="pokret-gradiliste-wrap" class="tim-form-group">
-            <label>Gradilište</label>
-            <select id="pokret-gradiliste" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
-                <option value="">— Izaberi gradilište —</option>
+        <button onclick="document.getElementById('prenos-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 id="prenos-naslov" style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:16px;padding-right:32px;">↔ Prenos robe</h3>
+        <input type="hidden" id="prenos-naziv"><input type="hidden" id="prenos-jm">
+        <input type="hidden" id="prenos-katalog"><input type="hidden" id="prenos-lok-iz"><input type="hidden" id="prenos-gid-iz">
+        <div class="tim-form-group"><label>Sa lokacije</label>
+            <input type="text" id="prenos-lok-iz-disp" disabled style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;background:#f1f5f9;color:#475569;width:100%;box-sizing:border-box;"></div>
+        <div class="tim-form-group"><label>Količina <span id="prenos-max" style="color:var(--muted);font-size:11px;"></span></label>
+            <input type="number" id="prenos-kolicina" min="0.001" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        <div class="tim-form-group"><label>Na lokaciju</label>
+            <select id="prenos-lok-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
+                <option value="magacin">Magacin</option>
                 <?php foreach ($gradilista as $g): ?>
                 <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
                 <?php endforeach; ?>
-            </select>
-        </div>
+            </select></div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="tim-form-group"><label>Lokacija iz</label><input type="text" id="pokret-lok-iz" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-            <div class="tim-form-group"><label>Lokacija do</label><input type="text" id="pokret-lok-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+            <div class="tim-form-group"><label>Datum</label><input type="date" id="prenos-datum" value="<?= date('Y-m-d') ?>" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+            <div class="tim-form-group"><label>Napomena</label><input type="text" id="prenos-napomena" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
         </div>
-        <div class="tim-form-group"><label>Datum</label><input type="date" id="pokret-datum" value="<?= date('Y-m-d') ?>" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></div>
-        <div class="tim-form-group"><label>Napomena (opciono)</label><input type="text" id="pokret-napomena" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        <div id="pokret-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+        <div id="prenos-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
-            <button onclick="document.getElementById('pokret-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
-            <button onclick="sacuvajPokret()" class="btn-primary">Potvrdi pokret</button>
+            <button onclick="document.getElementById('prenos-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajPrenos()" class="btn-primary">Potvrdi prenos</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Izmena stavke ──────────────────────────────────── -->
+<div id="izmena-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="document.getElementById('izmena-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">✎ Izmena stavke</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Promenu lokacije radi „Prenos". Svaka izmena se beleži u log.</p>
+        <input type="hidden" id="izmena-stari-naziv"><input type="hidden" id="izmena-stari-jm">
+        <input type="hidden" id="izmena-lokacija"><input type="hidden" id="izmena-gid"><input type="hidden" id="izmena-katalog">
+        <div class="tim-form-group"><label>Lokacija</label>
+            <input type="text" id="izmena-lok-disp" disabled style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;background:#f1f5f9;color:#475569;width:100%;box-sizing:border-box;"></div>
+        <div class="tim-form-group"><label>Naziv</label>
+            <input type="text" id="izmena-naziv" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="tim-form-group"><label>Količina</label><input type="number" id="izmena-kolicina" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+            <div class="tim-form-group"><label>JM</label><input type="text" id="izmena-jm" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        </div>
+        <div id="izmena-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('izmena-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajIzmena()" class="btn-primary">Sačuvaj</button>
         </div>
     </div>
 </div>
@@ -709,44 +728,104 @@ function obrisiPrimku(id) {
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => { if (d.ok) location.reload(); else alert(d.err); });
 }
 
+// ── Stanje: akordeon + pretraga ──────────────────────────────
+function toggleLok(i) {
+    var body = document.getElementById('lok-body-' + i);
+    var chev = document.getElementById('lok-chev-' + i);
+    var open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    if (chev) chev.textContent = open ? '▶' : '▼';
+}
+
 function filtrirajStanje() {
-    var q = document.getElementById('srch-stanje').value.toLowerCase();
-    document.querySelectorAll('.stanje-red').forEach(function(tr) { tr.style.display = tr.dataset.naziv.includes(q) ? '' : 'none'; });
+    var q = document.getElementById('srch-stanje').value.trim().toLowerCase();
+    document.querySelectorAll('.lok-grupa').forEach(function(grupa, idx) {
+        var redovi = grupa.querySelectorAll('.stanje-red');
+        var vidljivih = 0;
+        redovi.forEach(function(r) {
+            var match = !q || (r.dataset.nazivLower || '').indexOf(q) !== -1;
+            r.style.display = match ? '' : 'none';
+            if (match) vidljivih++;
+        });
+        grupa.style.display = (q && vidljivih === 0) ? 'none' : '';
+        // pri pretrazi automatski otvori grupe sa pogocima
+        var body = grupa.querySelector('.lok-body');
+        var chev = grupa.querySelector('.lok-chevron');
+        if (body) {
+            if (q && vidljivih > 0) { body.style.display = 'block'; if (chev) chev.textContent = '▼'; }
+            else if (!q) { body.style.display = 'none'; if (chev) chev.textContent = '▶'; }
+        }
+    });
 }
 
-function openPokret(stavkaId, naziv, stanje, lokacija) {
-    document.getElementById('pokret-stavka-id').value = stavkaId;
-    document.getElementById('pokret-naslov').textContent = naziv;
-    document.getElementById('pokret-max-label').textContent = 'max: ' + stanje;
-    document.getElementById('pokret-kolicina').value = '';
-    document.getElementById('pokret-lok-iz').value = lokacija;
-    document.getElementById('pokret-lok-do').value = '';
-    document.getElementById('pokret-napomena').value = '';
-    document.getElementById('pokret-err').style.display = 'none';
-    document.getElementById('pokret-tip').value = 'izlaz';
-    azurirajPokretFormu();
-    document.getElementById('pokret-modal').style.display = 'flex';
+// ── Prenos na drugu lokaciju ─────────────────────────────────
+function openPrenos(btn) {
+    var r = btn.closest('.stanje-red');
+    document.getElementById('prenos-naziv').value   = r.dataset.naziv;
+    document.getElementById('prenos-jm').value      = r.dataset.jm;
+    document.getElementById('prenos-katalog').value = r.dataset.katalog || 0;
+    document.getElementById('prenos-lok-iz').value  = r.dataset.lokacija;
+    document.getElementById('prenos-gid-iz').value  = r.dataset.gradiliste || 0;
+    document.getElementById('prenos-lok-iz-disp').value = r.dataset.lokacija;
+    document.getElementById('prenos-naslov').textContent = '↔ ' + r.dataset.naziv;
+    document.getElementById('prenos-max').textContent = 'na stanju: ' + r.dataset.stanje + ' ' + r.dataset.jm;
+    document.getElementById('prenos-kolicina').value = '';
+    document.getElementById('prenos-kolicina').max = r.dataset.stanje;
+    document.getElementById('prenos-napomena').value = '';
+    document.getElementById('prenos-err').style.display = 'none';
+    document.getElementById('prenos-modal').style.display = 'flex';
 }
 
-function azurirajPokretFormu() {
-    var tip = document.getElementById('pokret-tip').value;
-    document.getElementById('pokret-gradiliste-wrap').style.display = tip === 'izlaz' ? 'block' : 'none';
-}
-
-function sacuvajPokret() {
+function sacuvajPrenos() {
+    var lokDo = lokFromSelect(document.getElementById('prenos-lok-do'));
     var fd = new FormData();
-    fd.append('_action', 'magacin_pokret'); fd.append('id', 0);
-    fd.append('stavka_id', document.getElementById('pokret-stavka-id').value);
-    fd.append('tip', document.getElementById('pokret-tip').value);
-    fd.append('kolicina', document.getElementById('pokret-kolicina').value);
-    fd.append('gradiliste_id', document.getElementById('pokret-gradiliste').value || 0);
-    fd.append('lokacija_iz', document.getElementById('pokret-lok-iz').value);
-    fd.append('lokacija_do', document.getElementById('pokret-lok-do').value);
-    fd.append('datum', document.getElementById('pokret-datum').value);
-    fd.append('napomena', document.getElementById('pokret-napomena').value);
+    fd.append('_action', 'magacin_prenos'); fd.append('id', 0);
+    fd.append('naziv',        document.getElementById('prenos-naziv').value);
+    fd.append('jm',           document.getElementById('prenos-jm').value);
+    fd.append('katalog_id',   document.getElementById('prenos-katalog').value);
+    fd.append('lokacija_iz',  document.getElementById('prenos-lok-iz').value);
+    fd.append('gradiliste_iz', document.getElementById('prenos-gid-iz').value);
+    fd.append('lokacija_do',  lokDo.lokacija);
+    fd.append('gradiliste_do', lokDo.gradiliste_id);
+    fd.append('kolicina',     document.getElementById('prenos-kolicina').value);
+    fd.append('datum',        document.getElementById('prenos-datum').value);
+    fd.append('napomena',     document.getElementById('prenos-napomena').value);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-        if (d.ok) { document.getElementById('pokret-modal').style.display = 'none'; location.reload(); }
-        else { var e = document.getElementById('pokret-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+        if (d.ok) { document.getElementById('prenos-modal').style.display = 'none'; location.reload(); }
+        else { var e = document.getElementById('prenos-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+    });
+}
+
+// ── Izmena stavke (pun edit + log) ───────────────────────────
+function openIzmena(btn) {
+    var r = btn.closest('.stanje-red');
+    document.getElementById('izmena-stari-naziv').value = r.dataset.naziv;
+    document.getElementById('izmena-stari-jm').value    = r.dataset.jm;
+    document.getElementById('izmena-lokacija').value    = r.dataset.lokacija;
+    document.getElementById('izmena-gid').value         = r.dataset.gradiliste || 0;
+    document.getElementById('izmena-katalog').value     = r.dataset.katalog || 0;
+    document.getElementById('izmena-lok-disp').value    = r.dataset.lokacija;
+    document.getElementById('izmena-naziv').value       = r.dataset.naziv;
+    document.getElementById('izmena-jm').value          = r.dataset.jm;
+    document.getElementById('izmena-kolicina').value    = r.dataset.stanje;
+    document.getElementById('izmena-err').style.display = 'none';
+    document.getElementById('izmena-modal').style.display = 'flex';
+}
+
+function sacuvajIzmena() {
+    var fd = new FormData();
+    fd.append('_action', 'magacin_izmeni_stanje'); fd.append('id', 0);
+    fd.append('stari_naziv',  document.getElementById('izmena-stari-naziv').value);
+    fd.append('stari_jm',     document.getElementById('izmena-stari-jm').value);
+    fd.append('lokacija',     document.getElementById('izmena-lokacija').value);
+    fd.append('gradiliste_id', document.getElementById('izmena-gid').value);
+    fd.append('katalog_id',   document.getElementById('izmena-katalog').value);
+    fd.append('novi_naziv',   document.getElementById('izmena-naziv').value);
+    fd.append('novi_jm',      document.getElementById('izmena-jm').value);
+    fd.append('nova_kolicina', document.getElementById('izmena-kolicina').value);
+    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+        if (d.ok) { document.getElementById('izmena-modal').style.display = 'none'; location.reload(); }
+        else { var e = document.getElementById('izmena-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
     });
 }
 

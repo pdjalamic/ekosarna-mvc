@@ -203,19 +203,21 @@ class Database
      */
     private static function backfillMagacinPromet(PDO $db): void
     {
-        // Mapa naziv gradilišta → id (radi popunjavanja gradiliste_id iz tekstualne lokacije)
+        // Mapa naziv gradilišta (lowercase) → [id, kanonski naziv].
+        // Kanonizuje neujednačene tekstualne lokacije ("šUMADIJA" → "Šumadija").
         $gmap = [];
         try {
             foreach ($db->query("SELECT id, naziv FROM gradilista")->fetchAll(PDO::FETCH_ASSOC) as $g) {
-                $gmap[mb_strtolower(trim($g['naziv']))] = (int)$g['id'];
+                $gmap[mb_strtolower(trim($g['naziv']))] = ['id' => (int)$g['id'], 'naziv' => trim($g['naziv'])];
             }
         } catch (PDOException $e) { /* gradilista možda ne postoji */ }
 
         $mapLok = function (?string $lok) use ($gmap): array {
             $lok = trim((string)$lok);
             if ($lok === '' || strcasecmp($lok, 'Kombi') === 0) $lok = 'Magacin';
-            $gid = $gmap[mb_strtolower($lok)] ?? null;
-            return [$lok, $gid];
+            $hit = $gmap[mb_strtolower($lok)] ?? null;
+            if ($hit) return [$hit['naziv'], $hit['id']]; // kanonski naziv + id
+            return [$lok, null];
         };
 
         $ins = $db->prepare("INSERT INTO magacin_promet

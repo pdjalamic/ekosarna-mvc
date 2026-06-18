@@ -18,7 +18,7 @@ class MagacinController extends \Core\Controller
 
         $tab = $_GET['tab'] ?? 'stanje';
 
-        $stanje = $this->getStanje();
+        $stanjePoLokaciji = $this->getStanjePoLokaciji();
 
         $primke = $this->db->query("
             SELECT p.*, k.ime AS kreator_ime
@@ -37,29 +37,67 @@ class MagacinController extends \Core\Controller
             SELECT id, naziv FROM gradilista WHERE status='aktivno' ORDER BY naziv
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
-        $this->view('magacin/index', compact('stanje', 'primke', 'gradilista', 'tab'));
+        $this->view('magacin/index', compact('stanjePoLokaciji', 'primke', 'gradilista', 'tab'));
     }
 
-    private function getStanje(): array
+    /**
+     * Stanje iz knjige prometa, grupisano po lokaciji.
+     * Vraća uređenu mapu: 'Magacin' prvi (ako ima stanja), pa gradilišta abecedno.
+     * Svaki red: naziv, jm, lokacija, gradiliste_id, katalog_id, stanje.
+     */
+    private function getStanjePoLokaciji(): array
     {
-        return $this->db->query("
-            SELECT
-                s.id, s.naziv, s.jm, s.lokacija,
-                s.kolicina AS primljeno,
-                COALESCE(SUM(CASE WHEN p.tip = 'izlaz' THEN p.kolicina ELSE 0 END), 0) AS izdato,
-                COALESCE(SUM(CASE WHEN p.tip = 'povrat' THEN p.kolicina ELSE 0 END), 0) AS povraceno,
-                s.kolicina
-                - COALESCE(SUM(CASE WHEN p.tip = 'izlaz' THEN p.kolicina ELSE 0 END), 0)
-                + COALESCE(SUM(CASE WHEN p.tip = 'povrat' THEN p.kolicina ELSE 0 END), 0) AS stanje,
-                pr.firma_naziv,
-                pr.datum AS datum_prijema
-            FROM magacin_stavke s
-            JOIN magacin_primke pr ON s.primka_id = pr.id
-            LEFT JOIN magacin_pokreti p ON p.stavka_id = s.id
-            GROUP BY s.id
-            HAVING stanje > 0
-            ORDER BY s.naziv ASC
+        $rows = $this->db->query("
+            SELECT naziv, jm, lokacija,
+                   MAX(gradiliste_id) AS gradiliste_id,
+                   MAX(katalog_id)    AS katalog_id,
+                   ROUND(SUM(kolicina), 3) AS stanje
+            FROM magacin_promet
+            GROUP BY lokacija, naziv, jm
+            HAVING stanje <> 0
+            ORDER BY naziv ASC
         ")->fetchAll(\PDO::FETCH_ASSOC);
+
+        $grouped = [];
+        foreach ($rows as $r) {
+            $grouped[$r['lokacija']][] = $r;
+        }
+
+        $ordered = [];
+        if (isset($grouped['Magacin'])) {
+            $ordered['Magacin'] = $grouped['Magacin'];
+            unset($grouped['Magacin']);
+        }
+        ksort($grouped, SORT_FLAG_CASE | SORT_STRING);
+        foreach ($grouped as $lok => $rs) {
+            $ordered[$lok] = $rs;
+        }
+        return $ordered;
+    }
+
+    /** Stanje jednog artikla na jednoj lokaciji (za validaciju). */
+    private function stanjeArtikla(string $naziv, string $jm, string $lokacija): float
+    {
+        $st = $this->db->prepare("
+            SELECT COALESCE(SUM(kolicina), 0)
+            FROM magacin_promet
+            WHERE naziv = ? AND jm = ? AND lokacija = ?
+        ");
+        $st->execute([$naziv, $jm, $lokacija]);
+        return (float)$st->fetchColumn();
+    }
+
+    /** Audit log magacina (ko/kada/akcija/staro/novo). */
+    private function loguj(string $tip, int $zapis_id, string $akcija, ?array $staro, ?array $novo, int $uid): void
+    {
+        $this->db->prepare("
+            INSERT INTO magacin_log (tip, zapis_id, akcija, korisnik_id, staro_stanje, novo_stanje)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ")->execute([
+            $tip, $zapis_id, $akcija, $uid,
+            $staro ? json_encode($staro, JSON_UNESCAPED_UNICODE) : null,
+            $novo  ? json_encode($novo,  JSON_UNESCAPED_UNICODE) : null,
+        ]);
     }
 
     private function ekstraktujPdfTekst(string $putanja): string
@@ -485,6 +523,85 @@ PROMPT;
                 INSERT INTO magacin_pokreti (stavka_id, tip, kolicina, gradiliste_id, lokacija_iz, lokacija_do, datum, napomena, korisnik_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             ")->execute([$stavka_id, $tip, $kolicina, $gradiliste_id, $lokacija_iz, $lokacija_do, $datum, $napomena, $uid]);
+
+            $this->json(['ok' => true]);
+        }
+
+        // ── Prenos na drugu lokaciju (deli količinu, ništa se ne gubi) ──
+        if ($action === 'magacin_prenos') {
+            $naziv      = trim($_POST['naziv'] ?? '');
+            $jm         = trim($_POST['jm'] ?? 'Kom');
+            $katalog_id = (int)($_POST['katalog_id'] ?? 0) ?: null;
+            $lok_iz     = trim($_POST['lokacija_iz'] ?? '');
+            $gid_iz     = (int)($_POST['gradiliste_iz'] ?? 0) ?: null;
+            $lok_do     = trim($_POST['lokacija_do'] ?? '');
+            $gid_do     = (int)($_POST['gradiliste_do'] ?? 0) ?: null;
+            $kolicina   = (float)($_POST['kolicina'] ?? 0);
+            $datum      = $_POST['datum'] ?? date('Y-m-d');
+            $napomena   = trim($_POST['napomena'] ?? '');
+
+            if (!$naziv || $kolicina <= 0 || !$lok_iz || !$lok_do) {
+                $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+            }
+            if ($lok_iz === $lok_do) {
+                $this->json(['ok' => false, 'err' => 'Izvor i odredište su iste lokacije.']);
+            }
+
+            $raspolozivo = $this->stanjeArtikla($naziv, $jm, $lok_iz);
+            if ($kolicina > $raspolozivo + 0.0005) {
+                $dostupno = rtrim(rtrim(number_format($raspolozivo, 3, '.', ''), '0'), '.');
+                $this->json(['ok' => false, 'err' => 'Nedovoljno na lokaciji ' . $lok_iz . '. Raspoloživo: ' . $dostupno]);
+            }
+
+            $ins = $this->db->prepare("INSERT INTO magacin_promet
+                (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'rucno', NULL, ?, ?, ?)");
+            $ins->execute([$katalog_id, $naziv, $jm, $lok_iz, $gid_iz, -$kolicina, 'prenos_iz', $datum, $napomena, $uid]);
+            $ins->execute([$katalog_id, $naziv, $jm, $lok_do, $gid_do,  $kolicina, 'prenos_do', $datum, $napomena, $uid]);
+
+            $this->loguj('prenos', 0, 'prenos',
+                ['naziv' => $naziv, 'jm' => $jm, 'lokacija' => $lok_iz, 'kolicina' => $kolicina],
+                ['lokacija' => $lok_do, 'kolicina' => $kolicina, 'napomena' => $napomena], $uid);
+
+            $this->json(['ok' => true]);
+        }
+
+        // ── Izmena stanja (pun edit naziv/JM/količina) + log ──
+        if ($action === 'magacin_izmeni_stanje') {
+            $st_naziv   = trim($_POST['stari_naziv'] ?? '');
+            $st_jm      = trim($_POST['stari_jm'] ?? 'Kom');
+            $lokacija   = trim($_POST['lokacija'] ?? '');
+            $gid        = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
+            $katalog_id = (int)($_POST['katalog_id'] ?? 0) ?: null;
+            $nv_naziv   = trim($_POST['novi_naziv'] ?? '');
+            $nv_jm      = trim($_POST['novi_jm'] ?? 'Kom');
+            $nv_kol     = (float)($_POST['nova_kolicina'] ?? 0);
+
+            if (!$st_naziv || !$lokacija || !$nv_naziv) {
+                $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+            }
+
+            $staroStanje = $this->stanjeArtikla($st_naziv, $st_jm, $lokacija);
+            $datum = date('Y-m-d');
+
+            // 1) Korekcija količine na ovoj lokaciji
+            $delta = round($nv_kol - $staroStanje, 3);
+            if (abs($delta) >= 0.0005) {
+                $this->db->prepare("INSERT INTO magacin_promet
+                    (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 'korekcija', 'edit', NULL, ?, 'Izmena stanja', ?)")
+                    ->execute([$katalog_id, $nv_naziv, $nv_jm, $lokacija, $gid, $delta, $datum, $uid]);
+            }
+
+            // 2) Preimenovanje / JM — na svim lokacijama radi konzistentnosti
+            if ($nv_naziv !== $st_naziv || $nv_jm !== $st_jm) {
+                $this->db->prepare("UPDATE magacin_promet SET naziv=?, jm=? WHERE naziv=? AND jm=?")
+                    ->execute([$nv_naziv, $nv_jm, $st_naziv, $st_jm]);
+            }
+
+            $this->loguj('stanje', 0, 'izmena',
+                ['naziv' => $st_naziv, 'jm' => $st_jm, 'lokacija' => $lokacija, 'stanje' => $staroStanje],
+                ['naziv' => $nv_naziv, 'jm' => $nv_jm, 'lokacija' => $lokacija, 'stanje' => $nv_kol], $uid);
 
             $this->json(['ok' => true]);
         }
