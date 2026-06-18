@@ -14,7 +14,7 @@ class MagacinController extends \Core\Controller
 
     public function index(): void
     {
-        Auth::requireAdmin();
+        Auth::requireMagacin();
 
         $tab = $_GET['tab'] ?? 'stanje';
 
@@ -126,7 +126,7 @@ class MagacinController extends \Core\Controller
 
     public function ajax(string $action, int $id): void
     {
-        Auth::requireAdmin();
+        Auth::requireMagacin();
         $uid = Auth::id();
 
         // ── Parse dokumenta ─────────────────────────────────
