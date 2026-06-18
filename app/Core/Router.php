@@ -55,8 +55,13 @@ class Router
             exit;
         }
 
-        // Magacin, Imenik i Obaveštenja — samo Administrator
-        if (in_array($page, ['magacin', 'imenik', 'obavestenja']) && !Auth::isAdmin()) {
+        // Imenik i Obaveštenja — samo Administrator
+        if (in_array($page, ['imenik', 'obavestenja']) && !Auth::isAdmin()) {
+            header('Location: ' . BASE_URL . '/');
+            exit;
+        }
+        // Magacin — admini + Inženjer na gradilištu
+        if ($page === 'magacin' && !Auth::canMagacin()) {
             header('Location: ' . BASE_URL . '/');
             exit;
         }
@@ -110,6 +115,12 @@ class Router
                 $zadaci  = (int)$db->query("SELECT COUNT(*) FROM interni_zadaci WHERE prihvaceno_id IS NULL AND dodeljeno_id IS NOT NULL AND status!='zavrseno'")->fetchColumn();
                 $nabavka = (int)$db->query("SELECT COUNT(*) FROM nabavka_zahtevi WHERE status='novo'")->fetchColumn();
                 exit(json_encode(['ok'=>true,'kontakt'=>$kontakt,'zadaci'=>$zadaci,'nabavka'=>$nabavka]));
+            }
+
+            // Odjava sa svih uređaja
+            if ($action === 'auth_logout_all') {
+                (new \Controllers\AuthController())->logoutAll();
+                return;
             }
 
             // Kontakt
@@ -170,7 +181,7 @@ class Router
 
             // Magacin
             if (str_starts_with($action, 'magacin_')) {
-                Auth::requireAdmin();
+                Auth::requireMagacin();
                 (new \Controllers\MagacinController())->ajax($action, $id);
                 return;
             }

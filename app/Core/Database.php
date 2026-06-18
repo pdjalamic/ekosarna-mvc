@@ -59,6 +59,7 @@ class Database
             uloga           ENUM('Direktor','AT','AF','Inženjer na gradilištu','Rukovodilac operative','Monter poslovođa','Zamenik montera poslovođe','Monter','Pomoćni radnik','Administrator','Operater','Elektricar') NOT NULL DEFAULT 'Operater',
             aktivan         TINYINT(1) NOT NULL DEFAULT 1,
             vidi_imenik     TINYINT(1) NOT NULL DEFAULT 0,
+            vidi_magacin    TINYINT(1) NOT NULL DEFAULT 0,
             telefon         VARCHAR(50)  NOT NULL DEFAULT '',
             mail_pass       VARCHAR(255) NOT NULL DEFAULT '',
             datum_kreiranja DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -105,9 +106,21 @@ class Database
             INDEX idx_firma (firma_id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
 
+        $db->exec("CREATE TABLE IF NOT EXISTS remember_tokens (
+            id             INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+            korisnik_id    INT UNSIGNED NOT NULL,
+            selektor       VARCHAR(32)  NOT NULL UNIQUE,
+            validator_hash CHAR(64)     NOT NULL,
+            expires_at     DATETIME     NOT NULL,
+            created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_korisnik (korisnik_id),
+            INDEX idx_expires  (expires_at)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+
         // ALTER TABLE fallbacks za postojeće instalacije
         $alters = [
             "ALTER TABLE admin_korisnici ADD COLUMN vidi_imenik TINYINT(1) NOT NULL DEFAULT 0",
+            "ALTER TABLE admin_korisnici ADD COLUMN vidi_magacin TINYINT(1) NOT NULL DEFAULT 0",
             "ALTER TABLE admin_korisnici ADD COLUMN telefon VARCHAR(50) NOT NULL DEFAULT ''",
             "ALTER TABLE admin_korisnici ADD COLUMN mail_pass VARCHAR(255) NOT NULL DEFAULT ''",
             "ALTER TABLE imenik_kontakti ADD COLUMN telefon VARCHAR(100) NOT NULL DEFAULT ''",

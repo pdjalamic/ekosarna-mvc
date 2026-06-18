@@ -21,6 +21,8 @@ class AuthController extends \Core\Controller
                 $user = Korisnik::findByUsername($_POST['username'] ?? '');
                 if ($user && password_verify($_POST['password'] ?? '', $user['password_hash'])) {
                     Auth::login($user);
+                    // "Zapamti me" je uvek uključeno — ostani prijavljen ~90 dana
+                    Auth::issueRememberToken((int)$user['id']);
                     // Telefon: vodi na home screen (mreža ikonica); desktop kao pre
                     $isMobile = (bool) preg_match(
                         '/Mobile|Android|iPhone|iPad|iPod|Opera Mini|IEMobile|BlackBerry/i',
@@ -37,5 +39,13 @@ class AuthController extends \Core\Controller
         }
 
         require_once APP . '/Views/auth/login.php';
+    }
+
+    /** AJAX: odjava sa svih uređaja — poništava sve "remember" tokene. */
+    public function logoutAll(): void
+    {
+        Auth::requireLogin();
+        Auth::logoutAllDevices();
+        echo json_encode(['ok' => true]);
     }
 }

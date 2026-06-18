@@ -52,8 +52,13 @@
       <span class="sr-ico" style="background:#dcfce7;color:#16a34a;">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
       </span>
-      <span class="sr-txt"><b>Bezbednost</b> <span class="set-soon">uskoro</span></span>
+      <span class="sr-txt">
+        <b>Odjavi sa svih uređaja</b>
+        <span>Poništi zapamćene prijave na svim telefonima i računarima</span>
+      </span>
+      <button id="logout-all-btn" class="set-btn off" onclick="logoutAll()">Odjavi sve</button>
     </div>
+    <div class="set-status" id="logout-all-status"></div>
   </div>
 
   <a class="set-logout" href="<?= BASE_URL ?>/?logout=1">Odjavi se</a>
@@ -158,4 +163,20 @@
 
   init();
 })();
+
+// Odjava sa svih uređaja
+window.logoutAll = function () {
+  if (!confirm('Odjaviti sa svih uređaja? Moraćeš ponovo da se prijaviš svuda.')) return;
+  var b = document.getElementById('logout-all-btn');
+  var st = document.getElementById('logout-all-status');
+  b.disabled = true; b.textContent = 'Odjavljujem…'; st.textContent = '';
+  var fd = new FormData(); fd.append('_action', 'auth_logout_all');
+  fetch('<?= BASE_URL ?>/', { method: 'POST', body: fd })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.ok) { window.location.href = '<?= BASE_URL ?>/'; }
+      else { b.disabled = false; b.textContent = 'Odjavi sve'; st.className = 'set-status err'; st.textContent = (d && d.err) || 'Greška.'; }
+    })
+    .catch(function () { b.disabled = false; b.textContent = 'Odjavi sve'; st.className = 'set-status err'; st.textContent = 'Greška u komunikaciji.'; });
+};
 </script>
