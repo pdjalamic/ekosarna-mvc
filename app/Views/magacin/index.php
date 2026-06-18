@@ -105,6 +105,9 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
             <span class="lok-chevron" id="lok-chev-<?= $li ?>">▶</span>
             <span style="font-weight:800;font-size:14px;color:#1f2a44;"><?= $jeMagacin ? '🏭' : '📍' ?> <?= h($lok) ?></span>
             <span style="margin-left:auto;color:var(--muted);font-size:12px;"><?= count($artikli) ?> art.</span>
+            <button class="btn-sm" title="Premesti sve sa ove lokacije"
+                data-lok="<?= htmlspecialchars($lok, ENT_QUOTES) ?>"
+                onclick="event.stopPropagation();openPremestiLok(this)">⇄</button>
         </div>
         <div class="lok-body" id="lok-body-<?= $li ?>" style="display:none;">
             <?php foreach ($artikli as $s): ?>
@@ -332,6 +335,28 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('prenos-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
             <button onclick="sacuvajPrenos()" class="btn-primary">Potvrdi prenos</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Premesti celu lokaciju ─────────────────────────── -->
+<div id="premesti-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="document.getElementById('premesti-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">⇄ Premesti celu lokaciju</h3>
+        <p style="font-size:12px;color:var(--muted);margin:0 0 16px;">Svi artikli sa lokacije <strong id="premesti-iz-disp"></strong> prelaze na izabranu lokaciju (vezivanje za pravo gradilište).</p>
+        <input type="hidden" id="premesti-lok-iz">
+        <div class="tim-form-group"><label>Premesti na</label>
+            <select id="premesti-lok-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
+                <option value="magacin">Magacin</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
+        <div id="premesti-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('premesti-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajPremestiLok()" class="btn-primary">Premesti sve</button>
         </div>
     </div>
 </div>
@@ -793,6 +818,34 @@ function sacuvajPrenos() {
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
         if (d.ok) { document.getElementById('prenos-modal').style.display = 'none'; location.reload(); }
         else { var e = document.getElementById('prenos-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+    });
+}
+
+// ── Premesti celu lokaciju (ručno vezivanje za gradilište) ───
+function openPremestiLok(btn) {
+    var lok = btn.dataset.lok;
+    document.getElementById('premesti-lok-iz').value = lok;
+    document.getElementById('premesti-iz-disp').textContent = lok;
+    document.getElementById('premesti-err').style.display = 'none';
+    // ne nudi istu lokaciju kao odredište
+    var sel = document.getElementById('premesti-lok-do');
+    Array.prototype.forEach.call(sel.options, function (o) {
+        o.disabled = (o.text === lok);
+    });
+    if (sel.options[sel.selectedIndex] && sel.options[sel.selectedIndex].disabled) sel.selectedIndex = 0;
+    document.getElementById('premesti-modal').style.display = 'flex';
+}
+
+function sacuvajPremestiLok() {
+    var lokDo = lokFromSelect(document.getElementById('premesti-lok-do'));
+    var fd = new FormData();
+    fd.append('_action', 'magacin_premesti_lokaciju'); fd.append('id', 0);
+    fd.append('lokacija_iz',   document.getElementById('premesti-lok-iz').value);
+    fd.append('lokacija_do',   lokDo.lokacija);
+    fd.append('gradiliste_do', lokDo.gradiliste_id);
+    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+        if (d.ok) { document.getElementById('premesti-modal').style.display = 'none'; location.reload(); }
+        else { var e = document.getElementById('premesti-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
     });
 }
 

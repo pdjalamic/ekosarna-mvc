@@ -164,6 +164,9 @@ class Database
             }
         } catch (\PDOException $e) { /* magacin_stavke možda nije importovan */ }
 
+        // Samoispravljanje: veži prepoznate tekstualne lokacije za gradilišta
+        self::canonicalizeMagacinLokacije($db);
+
         // ALTER TABLE fallbacks za postojeće instalacije
         $alters = [
             "ALTER TABLE admin_korisnici ADD COLUMN vidi_imenik TINYINT(1) NOT NULL DEFAULT 0",
@@ -192,6 +195,39 @@ class Database
         }
     }
 
+    /** Normalizacija naziva lokacije za poređenje (lower + bez kvačica + bez ne-alfanum.). */
+    private static function normLok(?string $s): string
+    {
+        $s = mb_strtolower(trim((string)$s), 'UTF-8');
+        $s = strtr($s, ['š' => 's', 'đ' => 'd', 'ž' => 'z', 'č' => 'c', 'ć' => 'c']);
+        return preg_replace('/[^a-z0-9]/u', '', $s) ?? '';
+    }
+
+    /**
+     * Ponovljivo (idempotentno) vezivanje tekstualnih lokacija u magacin_promet
+     * za postojeća gradilišta kada se NORMALIZOVANI naziv poklapa. Ne pravi nove
+     * lokacije i ne dira one koje se ne prepoznaju (njih korisnik ručno premešta).
+     */
+    private static function canonicalizeMagacinLokacije(PDO $db): void
+    {
+        try {
+            $gmap = [];
+            foreach ($db->query("SELECT id, naziv FROM gradilista")->fetchAll(PDO::FETCH_ASSOC) as $g) {
+                $gmap[self::normLok($g['naziv'])] = ['id' => (int)$g['id'], 'naziv' => trim($g['naziv'])];
+            }
+            if (!$gmap) return;
+
+            $upd = $db->prepare("UPDATE magacin_promet SET lokacija=?, gradiliste_id=? WHERE lokacija=?");
+            $lokacije = $db->query("SELECT DISTINCT lokacija FROM magacin_promet")->fetchAll(PDO::FETCH_COLUMN);
+            foreach ($lokacije as $lok) {
+                $hit = $gmap[self::normLok($lok)] ?? null;
+                if ($hit && $hit['naziv'] !== $lok) {
+                    $upd->execute([$hit['naziv'], $hit['id'], $lok]);
+                }
+            }
+        } catch (PDOException $e) { /* magacin_promet/gradilista možda ne postoje */ }
+    }
+
     /**
      * Jednokratno prepunjavanje knjige prometa (magacin_promet) iz starog modela
      * (magacin_stavke + magacin_pokreti). Čuva ukupna stanja, a dodaje svest o lokaciji:
@@ -203,19 +239,20 @@ class Database
      */
     private static function backfillMagacinPromet(PDO $db): void
     {
-        // Mapa naziv gradilišta (lowercase) → [id, kanonski naziv].
-        // Kanonizuje neujednačene tekstualne lokacije ("šUMADIJA" → "Šumadija").
+        // Mapa normalizovan naziv gradilišta → [id, kanonski naziv].
+        // Normalizacija ignoriše velika/mala slova, razmake i kvačice, pa
+        // "FORTUNA BEKA TOWN" == "Fortuna Bekatown".
         $gmap = [];
         try {
             foreach ($db->query("SELECT id, naziv FROM gradilista")->fetchAll(PDO::FETCH_ASSOC) as $g) {
-                $gmap[mb_strtolower(trim($g['naziv']))] = ['id' => (int)$g['id'], 'naziv' => trim($g['naziv'])];
+                $gmap[self::normLok($g['naziv'])] = ['id' => (int)$g['id'], 'naziv' => trim($g['naziv'])];
             }
         } catch (PDOException $e) { /* gradilista možda ne postoji */ }
 
         $mapLok = function (?string $lok) use ($gmap): array {
             $lok = trim((string)$lok);
             if ($lok === '' || strcasecmp($lok, 'Kombi') === 0) $lok = 'Magacin';
-            $hit = $gmap[mb_strtolower($lok)] ?? null;
+            $hit = $gmap[self::normLok($lok)] ?? null;
             if ($hit) return [$hit['naziv'], $hit['id']]; // kanonski naziv + id
             return [$lok, null];
         };

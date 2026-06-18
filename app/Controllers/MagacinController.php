@@ -566,6 +566,54 @@ PROMPT;
             $this->json(['ok' => true]);
         }
 
+        // ── Premesti SVE sa jedne lokacije na drugu (ručno spajanje/vezivanje) ──
+        if ($action === 'magacin_premesti_lokaciju') {
+            $lok_iz = trim($_POST['lokacija_iz'] ?? '');
+            $lok_do = trim($_POST['lokacija_do'] ?? '');
+            $gid_do = (int)($_POST['gradiliste_do'] ?? 0) ?: null;
+
+            if (!$lok_iz || !$lok_do) {
+                $this->json(['ok' => false, 'err' => 'Nedostaju podaci.']);
+            }
+            if ($lok_iz === $lok_do) {
+                $this->json(['ok' => false, 'err' => 'Izvor i odredište su iste lokacije.']);
+            }
+
+            // Svi artikli sa stanjem != 0 na izvornoj lokaciji
+            $st = $this->db->prepare("
+                SELECT naziv, jm, MAX(katalog_id) AS katalog_id, ROUND(SUM(kolicina),3) AS stanje
+                FROM magacin_promet
+                WHERE lokacija = ?
+                GROUP BY naziv, jm
+                HAVING stanje <> 0
+            ");
+            $st->execute([$lok_iz]);
+            $artikli = $st->fetchAll(\PDO::FETCH_ASSOC);
+
+            if (!$artikli) {
+                $this->json(['ok' => false, 'err' => 'Na toj lokaciji nema artikala na stanju.']);
+            }
+
+            $datum = date('Y-m-d');
+            $ins = $this->db->prepare("INSERT INTO magacin_promet
+                (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'rucno', NULL, ?, ?, ?)");
+
+            $napomena = "Premešteno sa: {$lok_iz}";
+            foreach ($artikli as $a) {
+                $kol = (float)$a['stanje'];
+                $kat = $a['katalog_id'] ?: null;
+                $ins->execute([$kat, $a['naziv'], $a['jm'], $lok_iz, null,    -$kol, 'prenos_iz', $datum, "Spajanje na {$lok_do}", $uid]);
+                $ins->execute([$kat, $a['naziv'], $a['jm'], $lok_do, $gid_do,  $kol, 'prenos_do', $datum, $napomena, $uid]);
+            }
+
+            $this->loguj('lokacija', 0, 'premesti',
+                ['lokacija' => $lok_iz, 'broj_artikala' => count($artikli)],
+                ['lokacija' => $lok_do], $uid);
+
+            $this->json(['ok' => true, 'premeseno' => count($artikli)]);
+        }
+
         // ── Izmena stanja (pun edit naziv/JM/količina) + log ──
         if ($action === 'magacin_izmeni_stanje') {
             $st_naziv   = trim($_POST['stari_naziv'] ?? '');
