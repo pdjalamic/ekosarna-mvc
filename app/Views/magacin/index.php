@@ -3,7 +3,6 @@ $tabs = [
     'stanje'  => '📦 Stanje zaliha',
     'primke'  => '📋 Ulaz robe',
     'nova'    => '➕ Novi ulaz',
-    'utrosak' => '🔧 Utrošak',
 ];
 $aktivan_tab = $_GET['tab'] ?? 'stanje';
 ?>
@@ -293,39 +292,6 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
     </div>
 </div>
 
-<?php elseif ($aktivan_tab === 'utrosak'): ?>
-<div style="display:flex;align-items:center;gap:12px;margin-bottom:14px;flex-wrap:wrap;">
-    <input type="text" id="srch-utrosak" placeholder="Pretraži artikal/lokaciju..." oninput="filtrirajUtrosak()"
-        style="border:1.5px solid var(--light2);border-radius:8px;padding:8px 12px;font-size:13px;outline:none;background:#fff;width:280px;max-width:100%;box-sizing:border-box;">
-    <button class="btn-primary" onclick="openUtrosak()" style="margin-left:auto;">➕ Dodaj utrošak</button>
-</div>
-
-<?php if (empty($utrosak)): ?>
-    <div style="padding:40px;text-align:center;color:var(--muted);">Nema zabeležene potrošnje. Stiže iz Rasporeda automatski ili je dodaj ručno.</div>
-<?php else: ?>
-<div style="background:#fff;border:1.5px solid var(--light2);border-radius:12px;overflow:hidden;">
-    <?php foreach ($utrosak as $u): $jeRucno = ($u['izvor'] === 'rucno'); ?>
-    <div class="utr-red" style="display:flex;align-items:center;gap:10px;padding:11px 16px;border-top:1px solid var(--light2);"
-         data-pretraga="<?= htmlspecialchars(mb_strtolower($u['naziv'] . ' ' . $u['lokacija']), ENT_QUOTES) ?>">
-        <div style="flex:1;min-width:0;">
-            <div style="font-size:13px;font-weight:600;word-break:break-word;"><?= h($u['naziv']) ?></div>
-            <div style="font-size:11px;color:var(--muted);">
-                📍 <?= h($u['lokacija']) ?> · <?= $u['datum'] ? date('d.m.Y', strtotime($u['datum'])) : '' ?>
-                <?= $u['radnik_ime'] ? '· ' . h($u['radnik_ime']) : '' ?>
-                <span style="background:<?= $jeRucno ? '#fef3c7' : '#dbeafe' ?>;color:<?= $jeRucno ? '#92400e' : '#1e40af' ?>;border-radius:99px;font-size:10px;padding:1px 7px;margin-left:4px;"><?= $jeRucno ? 'Ručno' : 'Raspored' ?></span>
-                <?php if ($u['komentar']): ?><span style="color:#475569;"> · 💬 <?= h($u['komentar']) ?></span><?php endif; ?>
-            </div>
-        </div>
-        <div style="font-weight:700;font-size:14px;color:#dc2626;white-space:nowrap;">−<?= number_format($u['kolicina'], 2, ',', '.') ?> <span style="font-size:11px;color:var(--muted);font-weight:400;"><?= h($u['jm']) ?></span></div>
-        <?php if ($jeRucno): ?>
-        <button class="btn-sm del" title="Obriši ručni unos" onclick="obrisiUtrosak(<?= (int)$u['id'] ?>)">🗑</button>
-        <?php else: ?>
-        <span style="width:30px;"></span>
-        <?php endif; ?>
-    </div>
-    <?php endforeach; ?>
-</div>
-<?php endif; ?>
 <?php endif; ?>
 
 <!-- MODAL: Katalog provera ──────────────────────────────── -->
@@ -427,35 +393,6 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('izmena-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
             <button onclick="sacuvajIzmena()" class="btn-primary">Sačuvaj</button>
-        </div>
-    </div>
-</div>
-
-<!-- MODAL: Ručni unos utroška ─────────────────────────────── -->
-<div id="utrosak-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
-    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
-        <button onclick="document.getElementById('utrosak-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
-        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">🔧 Ručni unos utroška</h3>
-        <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Skida količinu sa stanja izabrane lokacije.</p>
-        <div class="tim-form-group"><label>Lokacija (sa koje se troši)</label>
-            <select id="utr-lokacija" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
-                <option value="magacin">Magacin</option>
-                <?php foreach ($gradilista as $g): ?>
-                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
-                <?php endforeach; ?>
-            </select></div>
-        <div class="tim-form-group"><label>Artikal</label>
-            <input type="text" id="utr-naziv" placeholder="Naziv materijala..." style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-            <div class="tim-form-group"><label>Količina</label><input type="number" id="utr-kolicina" min="0.001" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-            <div class="tim-form-group"><label>JM</label><input type="text" id="utr-jm" value="Kom" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        </div>
-        <div class="tim-form-group"><label>Datum</label><input type="date" id="utr-datum" value="<?= date('Y-m-d') ?>" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        <div class="tim-form-group"><label>Komentar</label><input type="text" id="utr-komentar" placeholder="npr. ugrađeno u sali 2..." style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
-        <div id="utr-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;">
-            <button onclick="document.getElementById('utrosak-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
-            <button onclick="sacuvajUtrosak()" class="btn-primary">Sačuvaj</button>
         </div>
     </div>
 </div>
@@ -949,49 +886,6 @@ function sacuvajPremestiLok() {
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
         if (d.ok) { document.getElementById('premesti-modal').style.display = 'none'; location.reload(); }
         else { var e = document.getElementById('premesti-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
-    });
-}
-
-// ── Utrošak (potrošnja) ──────────────────────────────────────
-function openUtrosak() {
-    document.getElementById('utr-naziv').value = '';
-    document.getElementById('utr-kolicina').value = '';
-    document.getElementById('utr-jm').value = 'Kom';
-    document.getElementById('utr-komentar').value = '';
-    document.getElementById('utr-err').style.display = 'none';
-    document.getElementById('utrosak-modal').style.display = 'flex';
-}
-
-function sacuvajUtrosak() {
-    var lok = lokFromSelect(document.getElementById('utr-lokacija'));
-    var fd = new FormData();
-    fd.append('_action', 'magacin_dodaj_utrosak'); fd.append('id', 0);
-    fd.append('naziv',         document.getElementById('utr-naziv').value);
-    fd.append('kolicina',      document.getElementById('utr-kolicina').value);
-    fd.append('jm',            document.getElementById('utr-jm').value);
-    fd.append('lokacija',      lok.lokacija);
-    fd.append('gradiliste_id', lok.gradiliste_id);
-    fd.append('datum',         document.getElementById('utr-datum').value);
-    fd.append('komentar',      document.getElementById('utr-komentar').value);
-    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-        if (d.ok) { document.getElementById('utrosak-modal').style.display = 'none'; location.reload(); }
-        else { var e = document.getElementById('utr-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
-    });
-}
-
-function obrisiUtrosak(id) {
-    if (!confirm('Obrisati ovaj ručni unos utroška?')) return;
-    var fd = new FormData();
-    fd.append('_action', 'magacin_obrisi_utrosak'); fd.append('id', id);
-    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-        if (d.ok) location.reload(); else alert(d.err || 'Greška.');
-    });
-}
-
-function filtrirajUtrosak() {
-    var q = document.getElementById('srch-utrosak').value.trim().toLowerCase();
-    document.querySelectorAll('.utr-red').forEach(function (r) {
-        r.style.display = (!q || (r.dataset.pretraga || '').indexOf(q) !== -1) ? '' : 'none';
     });
 }
 

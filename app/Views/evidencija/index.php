@@ -250,6 +250,11 @@
 
 <?php elseif ($tab === 'materijal'): ?>
 <!-- ═══ UTROŠAK MATERIJALA ══════════════════════════════════ -->
+<?php if ($is_admin): ?>
+<div style="display:flex;justify-content:flex-end;margin-bottom:12px;">
+    <button class="btn-primary" onclick="openDodajMat()">➕ Dodaj utrošak</button>
+</div>
+<?php endif; ?>
 <div class="rs-tabela-wrap">
 <?php if (empty($mat_unosi)): ?>
     <div style="padding:40px;text-align:center;color:var(--muted);">Nema unosa materijala za izabrani period.</div>
@@ -281,7 +286,10 @@
             <div style="color:var(--muted);font-size:11px;margin-top:2px;"><?= h(mb_substr($m['zadatak_opis'], 0, 60)) ?><?= mb_strlen($m['zadatak_opis']) > 60 ? '...' : '' ?></div>
             <?php endif; ?>
         </td>
-        <td style="font-size:13px;"><?= h($m['naziv']) ?></td>
+        <td style="font-size:13px;">
+            <?= h($m['naziv']) ?>
+            <?php if (!empty($m['komentar'])): ?><div style="color:var(--muted);font-size:11px;margin-top:2px;">💬 <?= h($m['komentar']) ?></div><?php endif; ?>
+        </td>
         <td style="text-align:center;font-weight:700;font-size:13px;"><?= number_format($m['kolicina'], 2, ',', '.') ?></td>
         <td style="text-align:center;font-size:12px;color:var(--muted);"><?= h($m['jm']) ?></td>
         <?php if ($is_admin): ?>
@@ -360,8 +368,116 @@
     </div>
 </div>
 
+<!-- MODAL: Dodaj utrošak (ručni unos potrošnje) -->
+<div id="modal-dodaj-mat" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="document.getElementById('modal-dodaj-mat').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">➕ Dodaj utrošak</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Skida količinu sa stanja izabrane lokacije u magacinu.</p>
+        <div class="tim-form-group"><label>Lokacija (sa koje se troši)</label>
+            <select id="dm-lokacija" onchange="evPopuniArtikle()" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
+                <option value="magacin">Magacin</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
+        <div class="tim-form-group"><label>Artikal</label>
+            <select id="dm-naziv" onchange="evArtikalChange()" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;"></select></div>
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:12px;">
+            <div class="tim-form-group"><label>Količina <span id="dm-dostupno" style="color:var(--muted);font-size:11px;font-weight:400;"></span></label><input type="number" id="dm-kolicina" min="0.001" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+            <div class="tim-form-group"><label>JM</label><input type="text" id="dm-jm" readonly style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:#f1f5f9;color:#475569;width:100%;box-sizing:border-box;"></div>
+        </div>
+        <div class="tim-form-group"><label>Datum</label><input type="date" id="dm-datum" value="<?= date('Y-m-d') ?>" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        <div class="tim-form-group"><label>Komentar</label><input type="text" id="dm-komentar" placeholder="npr. ugrađeno u sali 2..." style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        <div id="dm-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('modal-dodaj-mat').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajDodajMat()" class="btn-primary">Sačuvaj</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var _evSegmenti = [];
+var EV_GRADILISTA = <?= json_encode(array_map(fn($g) => ['id' => (int)$g['id'], 'naziv' => $g['naziv']], $gradilista), JSON_UNESCAPED_UNICODE) ?>;
+var EV_STANJE = <?= json_encode($magStanje ?? [], JSON_UNESCAPED_UNICODE) ?>;
+
+// Lokacija <select> → {lokacija (tekst), gradiliste_id}
+function evLokFromSelect(selEl) {
+    var v = selEl.value;
+    if (v === 'magacin') return { lokacija: 'Magacin', gradiliste_id: 0 };
+    var opt = selEl.options[selEl.selectedIndex];
+    return { lokacija: opt ? opt.text : 'Magacin', gradiliste_id: parseInt(v) || 0 };
+}
+
+function openDodajMat() {
+    document.getElementById('dm-kolicina').value = '';
+    document.getElementById('dm-komentar').value = '';
+    document.getElementById('dm-err').style.display = 'none';
+    evPopuniArtikle();
+    document.getElementById('modal-dodaj-mat').style.display = 'flex';
+}
+
+function evPopuniArtikle() {
+    var lok = evLokFromSelect(document.getElementById('dm-lokacija')).lokacija;
+    var sel = document.getElementById('dm-naziv');
+    var arr = EV_STANJE[lok] || [];
+    sel.innerHTML = '';
+    if (!arr.length) {
+        var o = document.createElement('option');
+        o.value = ''; o.textContent = '— nema artikala na ovoj lokaciji —';
+        sel.appendChild(o);
+    } else {
+        arr.forEach(function (a) {
+            var o = document.createElement('option');
+            o.value = a.naziv;
+            o.dataset.jm = a.jm;
+            o.dataset.stanje = a.stanje;
+            o.textContent = a.naziv + ' (' + a.stanje + ' ' + a.jm + ')';
+            sel.appendChild(o);
+        });
+    }
+    evArtikalChange();
+}
+
+function evArtikalChange() {
+    var sel = document.getElementById('dm-naziv');
+    var opt = sel.options[sel.selectedIndex];
+    if (opt && opt.value) {
+        document.getElementById('dm-jm').value = opt.dataset.jm || 'Kom';
+        document.getElementById('dm-kolicina').max = opt.dataset.stanje || '';
+        document.getElementById('dm-dostupno').textContent = 'dostupno: ' + (opt.dataset.stanje || 0) + ' ' + (opt.dataset.jm || '');
+    } else {
+        document.getElementById('dm-jm').value = '';
+        document.getElementById('dm-dostupno').textContent = '';
+    }
+}
+
+function sacuvajDodajMat() {
+    var sel = document.getElementById('dm-naziv');
+    var opt = sel.options[sel.selectedIndex];
+    var err = document.getElementById('dm-err');
+    if (!opt || !opt.value) { err.textContent = 'Izaberi artikal sa ove lokacije.'; err.style.display = 'block'; return; }
+    var kol = parseFloat(document.getElementById('dm-kolicina').value) || 0;
+    var dostupno = parseFloat(opt.dataset.stanje) || 0;
+    if (kol <= 0) { err.textContent = 'Unesi količinu.'; err.style.display = 'block'; return; }
+    if (kol > dostupno + 0.0005) { err.textContent = 'Količina je veća od dostupne (' + dostupno + ').'; err.style.display = 'block'; return; }
+
+    var lok = evLokFromSelect(document.getElementById('dm-lokacija'));
+    var fd = new FormData();
+    fd.append('_action', 'evidencija_dodaj_materijal'); fd.append('id', 0);
+    fd.append('naziv',         opt.value);
+    fd.append('kolicina',      kol);
+    fd.append('jm',            opt.dataset.jm || 'Kom');
+    fd.append('lokacija',      lok.lokacija);
+    fd.append('gradiliste_id', lok.gradiliste_id);
+    fd.append('datum',         document.getElementById('dm-datum').value);
+    fd.append('komentar',      document.getElementById('dm-komentar').value);
+    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+        if (d.ok) { location.reload(); }
+        else { err.textContent = d.err || 'Greška.'; err.style.display = 'block'; }
+    });
+}
 
 function openIzmeniVreme(id, datum, od, do_, sati, napomena, segmentiJson) {
     if (segmentiJson) {

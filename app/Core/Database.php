@@ -181,10 +181,14 @@ class Database
             "ALTER TABLE admin_korisnici ADD COLUMN platforma2 VARCHAR(20) DEFAULT NULL",
             "ALTER TABLE admin_korisnici ADD COLUMN telegram_username VARCHAR(100) NOT NULL DEFAULT ''",
             "ALTER TABLE magacin_stavke ADD COLUMN gradiliste_id INT UNSIGNED NULL AFTER lokacija",
+            "ALTER TABLE raspored_materijal ADD COLUMN komentar VARCHAR(500) NOT NULL DEFAULT ''",
         ];
         foreach ($alters as $sql) {
             try { $db->exec($sql); } catch (\PDOException $e) { /* kolona već postoji */ }
         }
+
+        // Utrošak na jednom mestu: prebaci stare ručne unose iz prometa u raspored_materijal
+        self::migrateRucnaPotrosnja($db);
 
         // Seed: prvi administrator
         $cnt = (int)$db->query("SELECT COUNT(*) FROM admin_korisnici")->fetchColumn();
@@ -193,6 +197,34 @@ class Database
             $db->prepare("INSERT INTO admin_korisnici (ime,email,username,password_hash,uloga) VALUES (?,?,?,?,?)")
                ->execute(['Administrator', 'info@ekosarna.com', 'ekosarna', $hash, 'Administrator']);
         }
+    }
+
+    /**
+     * Jednokratno (idempotentno) prebacivanje ranije ručno unetih utrošaka iz
+     * magacin_promet (izvor='rucno', tip='potrosnja') u raspored_materijal, da
+     * utrošak živi na jednom mestu (Evidencija). Promet red se zadržava (stanje
+     * ostaje tačno) i samo se preveže na izvor='raspored' + ref_id novog zapisa.
+     */
+    private static function migrateRucnaPotrosnja(PDO $db): void
+    {
+        try {
+            $rows = $db->query("SELECT * FROM magacin_promet WHERE izvor='rucno' AND tip='potrosnja'")->fetchAll(PDO::FETCH_ASSOC);
+            if (!$rows) return;
+
+            $insRm = $db->prepare("INSERT INTO raspored_materijal
+                (stavka_id, radnik_id, datum, naziv, kolicina, jm, gradiliste_id, gradiliste_naziv, komentar)
+                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $updPr = $db->prepare("UPDATE magacin_promet SET izvor='raspored', ref_id=? WHERE id=?");
+
+            foreach ($rows as $r) {
+                if (empty($r['korisnik_id'])) continue; // raspored_materijal.radnik_id je NOT NULL
+                $insRm->execute([
+                    $r['korisnik_id'], $r['datum'], $r['naziv'], abs((float)$r['kolicina']),
+                    $r['jm'] ?: 'Kom', $r['gradiliste_id'] ?: null, $r['lokacija'], $r['komentar'] ?? '',
+                ]);
+                $updPr->execute([(int)$db->lastInsertId(), (int)$r['id']]);
+            }
+        } catch (PDOException $e) { /* raspored_materijal/magacin_promet možda ne postoje */ }
     }
 
     /** Normalizacija naziva lokacije za poređenje (lower + bez kvačica + bez ne-alfanum.). */

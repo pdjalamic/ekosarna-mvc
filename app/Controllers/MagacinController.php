@@ -23,20 +23,6 @@ class MagacinController extends \Core\Controller
 
         $stanjePoLokaciji = $this->getStanjePoLokaciji();
 
-        $utrosak = [];
-        if ($tab === 'utrosak') {
-            $utrosak = $this->db->query("
-                SELECT p.id, p.datum, p.naziv, p.jm, p.lokacija, p.izvor, p.komentar,
-                       ABS(p.kolicina) AS kolicina, p.created_at,
-                       k.ime AS radnik_ime
-                FROM magacin_promet p
-                LEFT JOIN admin_korisnici k ON p.korisnik_id = k.id
-                WHERE p.tip = 'potrosnja'
-                ORDER BY p.datum DESC, p.created_at DESC
-                LIMIT 500
-            ")->fetchAll(\PDO::FETCH_ASSOC);
-        }
-
         $primke = $this->db->query("
             SELECT p.*, k.ime AS kreator_ime
             FROM magacin_primke p
@@ -65,7 +51,7 @@ class MagacinController extends \Core\Controller
             SELECT id, naziv FROM gradilista WHERE status='aktivno' ORDER BY naziv
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
-        $this->view('magacin/index', compact('stanjePoLokaciji', 'primke', 'gradilista', 'tab', 'utrosak'));
+        $this->view('magacin/index', compact('stanjePoLokaciji', 'primke', 'gradilista', 'tab'));
     }
 
     /**
@@ -81,7 +67,8 @@ class MagacinController extends \Core\Controller
                     (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
                 SELECT NULL, rm.naziv, COALESCE(NULLIF(rm.jm,''),'Kom'),
                        COALESCE(g.naziv, NULLIF(rm.gradiliste_naziv,''), 'Magacin'),
-                       rm.gradiliste_id, -ABS(rm.kolicina), 'potrosnja', 'raspored', rm.id, rm.datum, '', rm.radnik_id
+                       rm.gradiliste_id, -ABS(rm.kolicina), 'potrosnja', 'raspored', rm.id, rm.datum,
+                       COALESCE(rm.komentar,''), rm.radnik_id
                 FROM raspored_materijal rm
                 LEFT JOIN gradilista g ON rm.gradiliste_id = g.id
                 WHERE rm.kolicina > 0
@@ -747,46 +734,6 @@ PROMPT;
                 ['naziv' => $st_naziv, 'jm' => $st_jm, 'lokacija' => $lokacija, 'stanje' => $staroStanje],
                 ['naziv' => $nv_naziv, 'jm' => $nv_jm, 'lokacija' => $lokacija, 'stanje' => $nv_kol], $uid);
 
-            $this->json(['ok' => true]);
-        }
-
-        // ── Ručni unos potrošnje (sa komentarom) ──
-        if ($action === 'magacin_dodaj_utrosak') {
-            $naziv    = trim($_POST['naziv'] ?? '');
-            $kolicina = (float)($_POST['kolicina'] ?? 0);
-            $jm       = trim($_POST['jm'] ?? 'Kom') ?: 'Kom';
-            $lokacija = trim($_POST['lokacija'] ?? '') ?: 'Magacin';
-            $gid      = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
-            $datum    = $_POST['datum'] ?? date('Y-m-d');
-            $komentar = trim($_POST['komentar'] ?? '');
-
-            if (!$naziv || $kolicina <= 0) {
-                $this->json(['ok' => false, 'err' => 'Unesi naziv i količinu veću od 0.']);
-            }
-
-            $this->db->prepare("INSERT INTO magacin_promet
-                (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
-                VALUES (NULL, ?, ?, ?, ?, ?, 'potrosnja', 'rucno', NULL, ?, ?, ?)")
-                ->execute([$naziv, $jm, $lokacija, $gid, -$kolicina, $datum, $komentar, $uid]);
-            $noviId = (int)$this->db->lastInsertId();
-
-            $this->loguj('utrosak', $noviId, 'unos', null,
-                ['naziv' => $naziv, 'kolicina' => $kolicina, 'jm' => $jm, 'lokacija' => $lokacija, 'komentar' => $komentar], $uid);
-
-            $this->json(['ok' => true]);
-        }
-
-        // ── Obriši ručni utrošak ──
-        if ($action === 'magacin_obrisi_utrosak') {
-            $st = $this->db->prepare("SELECT * FROM magacin_promet WHERE id=? AND tip='potrosnja'");
-            $st->execute([$id]);
-            $zapis = $st->fetch(\PDO::FETCH_ASSOC);
-            if (!$zapis) $this->json(['ok' => false, 'err' => 'Zapis nije pronađen.']);
-            if ($zapis['izvor'] !== 'rucno') {
-                $this->json(['ok' => false, 'err' => 'Brisati se može samo ručni unos. Potrošnja iz rasporeda se menja u Rasporedu/Evidenciji.']);
-            }
-            $this->db->prepare("DELETE FROM magacin_promet WHERE id=?")->execute([$id]);
-            $this->loguj('utrosak', $id, 'brisanje', $zapis, null, $uid);
             $this->json(['ok' => true]);
         }
 

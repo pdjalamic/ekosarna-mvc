@@ -75,7 +75,7 @@ class EvidencijaController extends \Core\Controller
 
         $mat = $this->db->prepare("
             SELECT rm.id, rm.datum, rm.naziv, rm.kolicina, rm.jm,
-                   rm.stavka_id, rm.created_at,
+                   rm.stavka_id, rm.created_at, COALESCE(rm.komentar,'') AS komentar,
                    k.ime AS radnik_ime,
                    COALESCE(rm.gradiliste_naziv, g.naziv, g2.naziv, '') AS gradiliste_naziv,
                    rs2.opis AS zadatak_opis
@@ -90,11 +90,26 @@ class EvidencijaController extends \Core\Controller
         $mat->execute($params_m);
         $mat_unosi = $mat->fetchAll(\PDO::FETCH_ASSOC);
 
+        // Stanje po lokaciji (samo pozitivno) — za izbor artikla pri ručnom unosu utroška
+        $magStanje = [];
+        try {
+            $sr = $this->db->query("
+                SELECT lokacija, naziv, jm, ROUND(SUM(kolicina),3) AS stanje
+                FROM magacin_promet
+                GROUP BY lokacija, naziv, jm
+                HAVING stanje > 0
+                ORDER BY naziv ASC
+            ")->fetchAll(\PDO::FETCH_ASSOC);
+            foreach ($sr as $r) {
+                $magStanje[$r['lokacija']][] = ['naziv' => $r['naziv'], 'jm' => $r['jm'], 'stanje' => (float)$r['stanje']];
+            }
+        } catch (\PDOException $e) { /* magacin_promet možda ne postoji */ }
+
         $this->view('evidencija/index', compact(
             'tab', 'filter_od', 'filter_do', 'filter_radnik', 'filter_grad',
             'radnici', 'gradilista',
             'vreme_unosi', 'ukupno_sati',
-            'mat_unosi',
+            'mat_unosi', 'magStanje',
             'is_admin', 'je_kancelarija', 'uid'
         ));
     }
@@ -125,6 +140,50 @@ class EvidencijaController extends \Core\Controller
 
             $this->loguj('materijal', $id, 'brisanje', $zapis, null, $uid);
             $this->db->prepare("DELETE FROM raspored_materijal WHERE id=?")->execute([$id]);
+            // Skini i pripadajući trag iz knjige prometa magacina (vrati na stanje)
+            $this->db->prepare("DELETE FROM magacin_promet WHERE izvor='raspored' AND ref_id=?")->execute([$id]);
+            $this->json(['ok' => true]);
+        }
+
+        // ── Ručni unos utroška (potrošnja iz magacina) ───────
+        if ($action === 'evidencija_dodaj_materijal') {
+            $naziv    = trim($_POST['naziv'] ?? '');
+            $kolicina = (float)($_POST['kolicina'] ?? 0);
+            $jm       = trim($_POST['jm'] ?? 'Kom') ?: 'Kom';
+            $lokacija = trim($_POST['lokacija'] ?? '') ?: 'Magacin';
+            $gid      = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
+            $datum    = $_POST['datum'] ?? date('Y-m-d');
+            $komentar = trim($_POST['komentar'] ?? '');
+
+            if (!$naziv || $kolicina <= 0) {
+                $this->json(['ok' => false, 'err' => 'Unesi naziv i količinu veću od 0.']);
+            }
+
+            // Provera dostupne količine na lokaciji
+            $sa = $this->db->prepare("SELECT COALESCE(SUM(kolicina),0) FROM magacin_promet WHERE naziv=? AND jm=? AND lokacija=?");
+            $sa->execute([$naziv, $jm, $lokacija]);
+            $dostupno = (float)$sa->fetchColumn();
+            if ($kolicina > $dostupno + 0.0005) {
+                $d = rtrim(rtrim(number_format($dostupno, 3, '.', ''), '0'), '.');
+                $this->json(['ok' => false, 'err' => 'Količina je veća od dostupne (' . $d . ') na lokaciji ' . $lokacija . '.']);
+            }
+
+            // 1) Zapis u raspored_materijal (jedinstveni izvor utroška)
+            $this->db->prepare("INSERT INTO raspored_materijal
+                (stavka_id, radnik_id, datum, naziv, kolicina, jm, gradiliste_id, gradiliste_naziv, komentar)
+                VALUES (NULL, ?, ?, ?, ?, ?, ?, ?, ?)")
+                ->execute([$uid, $datum, $naziv, $kolicina, $jm, $gid, $lokacija, $komentar]);
+            $rmId = (int)$this->db->lastInsertId();
+
+            // 2) Odmah skini sa stanja magacina (knjiga prometa), povezano sa rm zapisom
+            $this->db->prepare("INSERT INTO magacin_promet
+                (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                VALUES (NULL, ?, ?, ?, ?, ?, 'potrosnja', 'raspored', ?, ?, ?, ?)")
+                ->execute([$naziv, $jm, $lokacija, $gid, -$kolicina, $rmId, $datum, $komentar, $uid]);
+
+            $this->loguj('materijal', $rmId, 'unos', null,
+                ['naziv' => $naziv, 'kolicina' => $kolicina, 'jm' => $jm, 'lokacija' => $lokacija, 'komentar' => $komentar], $uid);
+
             $this->json(['ok' => true]);
         }
 
@@ -222,6 +281,12 @@ class EvidencijaController extends \Core\Controller
             $this->db->prepare("
                 UPDATE raspored_materijal SET datum=?, naziv=?, kolicina=?, jm=? WHERE id=?
             ")->execute([$datum, $naziv, $kolicina, $jm, $id]);
+
+            // Uskladi pripadajući trag u knjizi prometa magacina (potrošnja je negativna)
+            $this->db->prepare("
+                UPDATE magacin_promet SET naziv=?, jm=?, kolicina=?, datum=?
+                WHERE izvor='raspored' AND ref_id=?
+            ")->execute([$naziv, $jm, -abs($kolicina), $datum, $id]);
 
             $this->json(['ok' => true]);
         }
