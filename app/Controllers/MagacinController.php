@@ -28,10 +28,21 @@ class MagacinController extends \Core\Controller
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
         foreach ($primke as &$pr) {
-            $stmt = $this->db->prepare("SELECT * FROM magacin_stavke WHERE primka_id = ? ORDER BY id ASC");
+            // Povuci i trenutnu (kanonsku) lokaciju iz knjige prometa za svaku stavku
+            $stmt = $this->db->prepare("
+                SELECT s.*,
+                       COALESCE(pr.lokacija, s.lokacija) AS lokacija_cur,
+                       pr.gradiliste_id AS gradiliste_cur
+                FROM magacin_stavke s
+                LEFT JOIN magacin_promet pr
+                       ON pr.izvor = 'primka' AND pr.tip = 'ulaz' AND pr.ref_id = s.id
+                WHERE s.primka_id = ?
+                ORDER BY s.id ASC
+            ");
             $stmt->execute([$pr['id']]);
             $pr['stavke'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
         }
+        unset($pr);
 
         $gradilista = $this->db->query("
             SELECT id, naziv FROM gradilista WHERE status='aktivno' ORDER BY naziv
@@ -562,6 +573,50 @@ PROMPT;
             $this->loguj('prenos', 0, 'prenos',
                 ['naziv' => $naziv, 'jm' => $jm, 'lokacija' => $lok_iz, 'kolicina' => $kolicina],
                 ['lokacija' => $lok_do, 'kolicina' => $kolicina, 'napomena' => $napomena], $uid);
+
+            $this->json(['ok' => true]);
+        }
+
+        // ── Uredi stavku ulaza (pun edit) + log; sinhronizuje 'ulaz' u prometu ──
+        if ($action === 'magacin_uredi_stavku') {
+            $stavka_id = (int)($_POST['stavka_id'] ?? 0);
+            $nv_naziv  = trim($_POST['naziv'] ?? '');
+            $nv_kol    = (float)($_POST['kolicina'] ?? 0);
+            $nv_jm     = trim($_POST['jm'] ?? 'Kom');
+            $lokacija  = trim($_POST['lokacija'] ?? 'Magacin') ?: 'Magacin';
+            $gid       = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
+
+            if (!$stavka_id || !$nv_naziv || $nv_kol <= 0) {
+                $this->json(['ok' => false, 'err' => 'Nedostaju podaci ili je količina 0.']);
+            }
+
+            $st = $this->db->prepare("SELECT * FROM magacin_stavke WHERE id=?");
+            $st->execute([$stavka_id]);
+            $staro = $st->fetch(\PDO::FETCH_ASSOC);
+            if (!$staro) $this->json(['ok' => false, 'err' => 'Stavka nije pronađena.']);
+
+            // 1) Ažuriraj stavku prijema
+            $this->db->prepare("
+                UPDATE magacin_stavke SET naziv=?, kolicina=?, jm=?, lokacija=?, gradiliste_id=? WHERE id=?
+            ")->execute([$nv_naziv, $nv_kol, $nv_jm, $lokacija, $gid, $stavka_id]);
+
+            // 2) Sinhronizuj pripadajući 'ulaz' u knjizi prometa (ili ga kreiraj ako fali)
+            $updPromet = $this->db->prepare("
+                UPDATE magacin_promet
+                SET naziv=?, kolicina=?, jm=?, lokacija=?, gradiliste_id=?
+                WHERE izvor='primka' AND tip='ulaz' AND ref_id=?
+            ");
+            $updPromet->execute([$nv_naziv, $nv_kol, $nv_jm, $lokacija, $gid, $stavka_id]);
+            if ($updPromet->rowCount() === 0) {
+                $this->db->prepare("INSERT INTO magacin_promet
+                    (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 'ulaz', 'primka', ?, ?, '', ?)")
+                    ->execute([$staro['katalog_id'] ?: null, $nv_naziv, $nv_jm, $lokacija, $gid, $nv_kol, $stavka_id, date('Y-m-d'), $uid]);
+            }
+
+            $this->loguj('stavka', $stavka_id, 'izmena',
+                ['naziv' => $staro['naziv'], 'kolicina' => (float)$staro['kolicina'], 'jm' => $staro['jm'], 'lokacija' => $staro['lokacija']],
+                ['naziv' => $nv_naziv, 'kolicina' => $nv_kol, 'jm' => $nv_jm, 'lokacija' => $lokacija], $uid);
 
             $this->json(['ok' => true]);
         }

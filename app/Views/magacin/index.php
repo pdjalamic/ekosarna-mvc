@@ -188,16 +188,27 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                                 <th style="text-align:center;padding:4px 8px;width:90px;">Količina</th>
                                 <th style="text-align:center;padding:4px 8px;width:50px;">JM</th>
                                 <th style="text-align:left;padding:4px 8px;width:100px;">Lokacija</th>
+                                <th style="padding:4px 8px;width:36px;"></th>
                             </tr>
                         </thead>
                         <tbody>
-                        <?php foreach ($pr['stavke'] as $si => $s): ?>
+                        <?php foreach ($pr['stavke'] as $si => $s): $lokCur = $s['lokacija_cur'] ?? $s['lokacija']; ?>
                         <tr style="border-top:1px solid var(--light2);">
                             <td style="text-align:center;padding:6px 8px;color:var(--muted);"><?= $si + 1 ?></td>
                             <td style="padding:6px 8px;"><?= h($s['naziv']) ?></td>
                             <td style="text-align:center;padding:6px 8px;font-weight:600;"><?= number_format($s['kolicina'], 2, ',', '.') ?></td>
                             <td style="text-align:center;padding:6px 8px;color:var(--muted);"><?= h($s['jm']) ?></td>
-                            <td style="padding:6px 8px;"><span style="background:#fff;border:1px solid var(--light2);border-radius:4px;padding:1px 7px;"><?= h($s['lokacija']) ?></span></td>
+                            <td style="padding:6px 8px;"><span style="background:#fff;border:1px solid var(--light2);border-radius:4px;padding:1px 7px;"><?= h($lokCur) ?></span></td>
+                            <td style="text-align:right;padding:6px 8px;">
+                                <button class="btn-sm" title="Izmeni stavku"
+                                    data-id="<?= (int)$s['id'] ?>"
+                                    data-naziv="<?= htmlspecialchars($s['naziv'], ENT_QUOTES) ?>"
+                                    data-kolicina="<?= $s['kolicina'] ?>"
+                                    data-jm="<?= htmlspecialchars($s['jm'], ENT_QUOTES) ?>"
+                                    data-lokacija="<?= htmlspecialchars($lokCur, ENT_QUOTES) ?>"
+                                    data-gradiliste="<?= (int)($s['gradiliste_cur'] ?? 0) ?>"
+                                    onclick="event.stopPropagation();openUrediStavku(this)">✎</button>
+                            </td>
                         </tr>
                         <?php endforeach; ?>
                         </tbody>
@@ -381,6 +392,34 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('izmena-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
             <button onclick="sacuvajIzmena()" class="btn-primary">Sačuvaj</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Izmena stavke ulaza ────────────────────────────── -->
+<div id="uredi-stavku-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:14px;padding:24px;width:100%;max-width:440px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="document.getElementById('uredi-stavku-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">✎ Izmena stavke ulaza</h3>
+        <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Menja stavku prijema i usklađuje stanje. Svaka izmena se beleži u log.</p>
+        <input type="hidden" id="us-id">
+        <div class="tim-form-group"><label>Naziv</label>
+            <input type="text" id="us-naziv" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+            <div class="tim-form-group"><label>Količina</label><input type="number" id="us-kolicina" min="0.001" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+            <div class="tim-form-group"><label>JM</label><input type="text" id="us-jm" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
+        </div>
+        <div class="tim-form-group"><label>Lokacija</label>
+            <select id="us-lokacija" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
+                <option value="magacin">Magacin</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
+        <div id="us-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;">
+            <button onclick="document.getElementById('uredi-stavku-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
+            <button onclick="sacuvajUrediStavku()" class="btn-primary">Sačuvaj</button>
         </div>
     </div>
 </div>
@@ -846,6 +885,34 @@ function sacuvajPremestiLok() {
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
         if (d.ok) { document.getElementById('premesti-modal').style.display = 'none'; location.reload(); }
         else { var e = document.getElementById('premesti-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+    });
+}
+
+// ── Izmena stavke ulaza (Ulaz robe) ──────────────────────────
+function openUrediStavku(btn) {
+    document.getElementById('us-id').value       = btn.dataset.id;
+    document.getElementById('us-naziv').value    = btn.dataset.naziv;
+    document.getElementById('us-kolicina').value = btn.dataset.kolicina;
+    document.getElementById('us-jm').value       = btn.dataset.jm;
+    var gid = parseInt(btn.dataset.gradiliste) || 0;
+    document.getElementById('us-lokacija').value = gid > 0 ? String(gid) : 'magacin';
+    document.getElementById('us-err').style.display = 'none';
+    document.getElementById('uredi-stavku-modal').style.display = 'flex';
+}
+
+function sacuvajUrediStavku() {
+    var lok = lokFromSelect(document.getElementById('us-lokacija'));
+    var fd = new FormData();
+    fd.append('_action', 'magacin_uredi_stavku'); fd.append('id', 0);
+    fd.append('stavka_id',     document.getElementById('us-id').value);
+    fd.append('naziv',         document.getElementById('us-naziv').value);
+    fd.append('kolicina',      document.getElementById('us-kolicina').value);
+    fd.append('jm',            document.getElementById('us-jm').value);
+    fd.append('lokacija',      lok.lokacija);
+    fd.append('gradiliste_id', lok.gradiliste_id);
+    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+        if (d.ok) { document.getElementById('uredi-stavku-modal').style.display = 'none'; location.reload(); }
+        else { var e = document.getElementById('us-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
     });
 }
 
