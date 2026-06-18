@@ -247,14 +247,20 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
             </div>
             <div class="tim-form-group">
                 <label>Podrazumevana lokacija</label>
-                <input type="text" id="prev-lokacija" value="Kombi"
+                <select id="prev-lokacija" onchange="podrazumevanaChange()"
                     style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:280px;box-sizing:border-box;">
+                    <option value="magacin">Magacin</option>
+                    <?php foreach ($gradilista as $g): ?>
+                    <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div style="font-size:11px;color:var(--muted);margin-top:4px;">Promena ovde postavlja lokaciju na svim stavkama ispod.</div>
             </div>
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;">
                 Stavke (<span id="prev-stavke-count">0</span>)
             </div>
-            <div style="display:grid;grid-template-columns:28px 1fr 80px 60px 36px;gap:6px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">
-                <span>#</span><span>Naziv</span><span style="text-align:center;">Količina</span><span style="text-align:center;">JM</span><span></span>
+            <div style="display:grid;grid-template-columns:24px 1fr 70px 48px 130px 30px;gap:6px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">
+                <span>#</span><span>Naziv</span><span style="text-align:center;">Količina</span><span style="text-align:center;">JM</span><span>Lokacija</span><span></span>
             </div>
             <div id="prev-stavke-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px;max-height:360px;overflow-y:auto;"></div>
             <div id="mag-err" style="display:none;color:#dc2626;font-size:12px;background:#fef2f2;border-radius:6px;padding:8px 12px;margin-bottom:10px;"></div>
@@ -340,6 +346,31 @@ var _magFajl      = null;
 var _magParsed    = null;
 var _firmaIzbor   = 'nova';
 var _katalogOdluke = []; // odluke korisnika po stavkama
+var _stavkeUlaz   = []; // stavke (sa lokacijom) prikupljene pre provere kataloga
+var MAG_GRADILISTA = <?= json_encode(array_map(fn($g) => ['id' => (int)$g['id'], 'naziv' => $g['naziv']], $gradilista), JSON_UNESCAPED_UNICODE) ?>;
+
+// HTML <option> lista lokacija (Magacin + gradilišta), sa obeleženim izborom
+function lokOptionsHtml(sel) {
+    var h = '<option value="magacin"' + (String(sel) === 'magacin' ? ' selected' : '') + '>Magacin</option>';
+    MAG_GRADILISTA.forEach(function (g) {
+        h += '<option value="' + g.id + '"' + (String(sel) === String(g.id) ? ' selected' : '') + '>' + esc(g.naziv) + '</option>';
+    });
+    return h;
+}
+
+// Iz <select> lokacije izvuci {lokacija (tekst), gradiliste_id}
+function lokFromSelect(selEl) {
+    var v = selEl.value;
+    if (v === 'magacin') return { lokacija: 'Magacin', gradiliste_id: 0 };
+    var opt = selEl.options[selEl.selectedIndex];
+    return { lokacija: opt ? opt.text : 'Magacin', gradiliste_id: parseInt(v) || 0 };
+}
+
+// Promena podrazumevane lokacije → primeni na sve stavke
+function podrazumevanaChange() {
+    var v = document.getElementById('prev-lokacija').value;
+    document.querySelectorAll('#prev-stavke-lista .st-lokacija').forEach(function (s) { s.value = v; });
+}
 
 // ── Upload ───────────────────────────────────────────────────
 function handleFileSelect(file) { if (file) { _magFajl = file; parseDocument(file); } }
@@ -382,14 +413,16 @@ function prikaziPreview(data) {
     document.getElementById('prev-tip').value    = data.tip    || 'otpremnica';
     var lista = document.getElementById('prev-stavke-lista');
     lista.innerHTML = '';
+    var podrazumevana = document.getElementById('prev-lokacija').value || 'magacin';
     (data.stavke || []).forEach(function(s, i) {
         var row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:28px 1fr 80px 60px 36px;gap:6px;align-items:center;background:var(--light);border-radius:7px;padding:6px 8px;';
+        row.style.cssText = 'display:grid;grid-template-columns:24px 1fr 70px 48px 130px 30px;gap:6px;align-items:center;background:var(--light);border-radius:7px;padding:6px 8px;';
         row.innerHTML = `
             <span style="font-size:11px;color:var(--muted);text-align:center;">${i+1}</span>
             <input type="text" value="${esc(s.naziv)}" class="st-naziv" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
             <input type="number" value="${s.kolicina}" class="st-kolicina" min="0" step="0.01" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
             <input type="text" value="${esc(s.jm)}" class="st-jm" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
+            <select class="st-lokacija" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 6px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">${lokOptionsHtml(podrazumevana)}</select>
             <button onclick="ukloniStavku(this)" style="background:#fee2e2;border:none;border-radius:6px;padding:5px 6px;font-size:13px;cursor:pointer;color:#dc2626;" title="Ukloni">✕</button>
         `;
         lista.appendChild(row);
@@ -454,6 +487,7 @@ function sacuvajKorak2() {
         err.style.display = 'block';
         return;
     }
+    _stavkeUlaz = stavke; // zapamti lokacije (server vraća rezultate istim redosledom)
 
     var fd = new FormData();
     fd.append('_action', 'magacin_proveri_katalog');
@@ -469,14 +503,16 @@ function sacuvajKorak2() {
             prikaziKatalogModal(d.rezultati);
         } else {
             // Nema predloga — sve automatski
-            _katalogOdluke = d.rezultati.map(function(r) {
+            _katalogOdluke = d.rezultati.map(function(r, i) {
+                var sv = _stavkeUlaz[i] || {};
                 return {
-                    naziv:      r.naziv,
-                    kolicina:   r.kolicina,
-                    jm:         r.jm,
-                    lokacija:   document.getElementById('prev-lokacija').value.trim() || 'Kombi',
-                    master_id:  r.status === 'tacno' ? null : 'novi',
-                    rucni_naziv: ''
+                    naziv:         r.naziv,
+                    kolicina:      r.kolicina,
+                    jm:            r.jm,
+                    lokacija:      sv.lokacija || 'Magacin',
+                    gradiliste_id: sv.gradiliste_id || 0,
+                    master_id:     r.status === 'tacno' ? null : 'novi',
+                    rucni_naziv:   ''
                 };
             });
             doSacuvajPrimku();
@@ -488,9 +524,9 @@ function sacuvajKorak2() {
 function prikaziKatalogModal(rezultati) {
     var lista = document.getElementById('katalog-stavke-lista');
     lista.innerHTML = '';
-    var lokacija = document.getElementById('prev-lokacija').value.trim() || 'Kombi';
 
     rezultati.forEach(function(r, i) {
+        var sv = _stavkeUlaz[i] || {};
         var div = document.createElement('div');
         div.style.cssText = 'border:1px solid var(--light2);border-radius:8px;padding:12px 14px;';
         div.dataset.index = i;
@@ -528,11 +564,12 @@ function prikaziKatalogModal(rezultati) {
         }
 
         div.innerHTML = html;
-        div.dataset.naziv    = r.naziv;
-        div.dataset.kolicina = r.kolicina;
-        div.dataset.jm       = r.jm;
-        div.dataset.lokacija = lokacija;
-        div.dataset.status   = r.status;
+        div.dataset.naziv       = r.naziv;
+        div.dataset.kolicina    = r.kolicina;
+        div.dataset.jm          = r.jm;
+        div.dataset.lokacija    = sv.lokacija || 'Magacin';
+        div.dataset.gradilisteId = sv.gradiliste_id || 0;
+        div.dataset.status      = r.status;
         lista.appendChild(div);
     });
 
@@ -557,6 +594,7 @@ function doSacuvajPrimku() {
             var kolicina = parseFloat(div.dataset.kolicina);
             var jm       = div.dataset.jm;
             var lokacija = div.dataset.lokacija;
+            var gradiliste_id = parseInt(div.dataset.gradilisteId) || 0;
 
             var master_id   = null;
             var rucni_naziv = '';
@@ -579,7 +617,7 @@ function doSacuvajPrimku() {
                 master_id = 'novi';
             }
 
-            _katalogOdluke.push({ naziv, kolicina, jm, lokacija, master_id, rucni_naziv });
+            _katalogOdluke.push({ naziv, kolicina, jm, lokacija, gradiliste_id, master_id, rucni_naziv });
         });
 
         if (greska) {
@@ -608,7 +646,7 @@ function doSacuvajPrimku() {
     fd.append('id', 0);
     fd.append('data', JSON.stringify(data));
     fd.append('fajl', data._fajl);
-    fd.append('lokacija', document.getElementById('prev-lokacija').value.trim() || 'Kombi');
+    fd.append('lokacija', lokFromSelect(document.getElementById('prev-lokacija')).lokacija);
     fd.append('firma_izbor', _firmaIzbor);
     fd.append('odluke_katalog', JSON.stringify(_katalogOdluke));
 
@@ -635,11 +673,13 @@ function doSacuvajPrimku() {
 function pokupiStavke() {
     var stavke = [];
     document.querySelectorAll('#prev-stavke-lista > div').forEach(function(row) {
+        var lok = lokFromSelect(row.querySelector('.st-lokacija'));
         stavke.push({
-            naziv:    row.querySelector('.st-naziv').value.trim(),
-            kolicina: parseFloat(row.querySelector('.st-kolicina').value) || 0,
-            jm:       row.querySelector('.st-jm').value.trim(),
-            lokacija: document.getElementById('prev-lokacija').value.trim() || 'Kombi'
+            naziv:         row.querySelector('.st-naziv').value.trim(),
+            kolicina:      parseFloat(row.querySelector('.st-kolicina').value) || 0,
+            jm:            row.querySelector('.st-jm').value.trim(),
+            lokacija:      lok.lokacija,
+            gradiliste_id: lok.gradiliste_id
         });
     });
     return stavke.filter(function(s) { return s.naziv && s.kolicina > 0; });

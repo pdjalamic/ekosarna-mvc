@@ -315,7 +315,7 @@ PROMPT;
         if ($action === 'magacin_sacuvaj_primku') {
             $data_json      = $_POST['data']         ?? '{}';
             $fajl           = $_POST['fajl']         ?? '';
-            $lokacija       = trim($_POST['lokacija'] ?? 'Kombi');
+            $lokacija       = trim($_POST['lokacija'] ?? 'Magacin');
             $firma_id_izbor = $_POST['firma_izbor']  ?? 'nova';
             // odluke_katalog: JSON niz sa odlukama korisnika po stavci
             // svaka odluka: {naziv, kolicina, jm, lokacija, master_id (null=novi), rucni_naziv (ako rucno)}
@@ -381,7 +381,8 @@ PROMPT;
                 $naziv          = trim($s['naziv']     ?? '');
                 $kolicina       = (float)($s['kolicina'] ?? 0);
                 $jm             = trim($s['jm']        ?? 'Kom');
-                $stavkaLokacija = trim($s['lokacija']  ?? $lokacija);
+                $stavkaLokacija = trim($s['lokacija']  ?? $lokacija) ?: 'Magacin';
+                $stavkaGradId   = (int)($s['gradiliste_id'] ?? 0) ?: null;
                 $master_id_odluka = $s['master_id']   ?? null; // null=novi, broj=veži za ovaj master
                 $rucni_naziv    = trim($s['rucni_naziv'] ?? '');
 
@@ -431,10 +432,21 @@ PROMPT;
                 }
 
                 $sStmt = $this->db->prepare("
-                    INSERT INTO magacin_stavke (primka_id, katalog_id, naziv, kolicina, jm, lokacija)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO magacin_stavke (primka_id, katalog_id, naziv, kolicina, jm, lokacija, gradiliste_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
                 ");
-                $sStmt->execute([$primka_id, $katalog_id, $naziv, $kolicina, $jm, $stavkaLokacija]);
+                $sStmt->execute([$primka_id, $katalog_id, $naziv, $kolicina, $jm, $stavkaLokacija, $stavkaGradId]);
+                $stavka_id = (int)$this->db->lastInsertId();
+
+                // Knjiga prometa: ulaz na izabranu lokaciju
+                $this->db->prepare("
+                    INSERT INTO magacin_promet
+                        (katalog_id, naziv, jm, lokacija, gradiliste_id, kolicina, tip, izvor, ref_id, datum, komentar, korisnik_id)
+                    VALUES (?, ?, ?, ?, ?, ?, 'ulaz', 'primka', ?, ?, '', ?)
+                ")->execute([
+                    $katalog_id, $naziv, $jm, $stavkaLokacija, $stavkaGradId, $kolicina,
+                    $stavka_id, ($datum ?: date('Y-m-d')), $uid,
+                ]);
             }
 
             $this->json(['ok' => true, 'primka_id' => $primka_id]);
