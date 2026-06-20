@@ -228,6 +228,17 @@ function timToggleImenik(id) {
   });
 }
 
+function timToggleMagacin(id) {
+  post({_action:'tim_toggle_magacin', id:id}).then(function(d){
+    if (!d.ok) { alert('Greška.'); return; }
+    var btn = document.getElementById('tim-magacin-'+id);
+    if (btn) {
+      if (d.vidi_magacin) { btn.className='btn-sm mark'; btn.textContent='📦 Magacin: DA'; }
+      else { btn.className='btn-sm'; btn.textContent='📦 Magacin: NE'; btn.style.color='var(--muted)'; }
+    }
+  });
+}
+
 function openTimAddModal() {
   ['tim-ime','tim-email','tim-telefon','tim-mail-pass','tim-telegram','tim-username','tim-pass'].forEach(function(id){
     var el = document.getElementById(id); if(el) el.value='';

@@ -7,9 +7,8 @@ use Models\Korisnik;
 
 class ZadaciController extends \Core\Controller
 {
-    // Zadatke zadaju (i menjaju/brišu) samo ove uloge; primaju ih samo ove.
+    // Zadatke zadaju (i menjaju/brišu) samo ove uloge; primaju ih svi aktivni korisnici (bilo koji tim).
     const ZADACI_ZADAJU  = ['Direktor', 'Inženjer na gradilištu'];
-    const ZADACI_PRIMAJU = ['AT', 'AF'];
 
     private $db;
 
@@ -126,8 +125,9 @@ if ($filters['status'] === '') {
 
         // Ko sme da zadaje (vidi "+ Novi zadatak", ✎, 🗑) i lista primalaca za dodelu
         $mozeZadati = in_array(Auth::uloga(), self::ZADACI_ZADAJU, true);
-        $primaoci   = array_values(array_filter($korisnici, function($u) {
-            return !empty($u['aktivan']) && in_array($u['uloga'], self::ZADACI_PRIMAJU, true);
+        // Primaoci: svi aktivni korisnici (bilo koji tim), osim samog zadavaoca (nema samododele)
+        $primaoci   = array_values(array_filter($korisnici, function($u) use ($uid) {
+            return !empty($u['aktivan']) && (int)$u['id'] !== (int)$uid;
         }));
 
         // Brojači prate prikazani opseg (isti scope + q + kategorija, sve statuse)
@@ -159,6 +159,7 @@ if ($filters['status'] === '') {
                 $tekst = trim($_POST['tekst'] ?? '');
                 if (!$tekst) $this->json(['ok' => false, 'err' => 'Tekst je obavezan.']);
                 $dodeljeno = (int)($_POST['dodeljeno_id'] ?? 0) ?: null;
+                if (!$dodeljeno) $this->json(['ok' => false, 'err' => 'Izaberi kome dodeljuješ zadatak.']);
                 $newId = InterniZadatak::create([
                     'tekst'        => mb_substr($tekst, 0, 2000),
                     'kategorija'   => mb_substr(trim($_POST['kategorija'] ?? ''), 0, 100),
@@ -168,16 +169,8 @@ if ($filters['status'] === '') {
                     'dodeljeno_id' => $dodeljeno,
                 ]);
 
-                // Push obaveštenje primaocima (dodeljeni, ili svi AT/AF) — osim onome ko zadaje
-                if ($dodeljeno) {
-                    $primaociIds = [$dodeljeno];
-                } else {
-                    $ph = implode(',', array_fill(0, count(self::ZADACI_PRIMAJU), '?'));
-                    $st = $this->db->prepare("SELECT id FROM admin_korisnici WHERE uloga IN ($ph) AND aktivan=1");
-                    $st->execute(self::ZADACI_PRIMAJU);
-                    $primaociIds = $st->fetchAll(\PDO::FETCH_COLUMN);
-                }
-                $primaociIds = array_filter($primaociIds, fn($x) => (int)$x !== (int)$uid);
+                // Push obaveštenje dodeljenom korisniku — osim ako je sam sebi zadao
+                $primaociIds = array_filter([$dodeljeno], fn($x) => (int)$x !== (int)$uid);
                 PushController::notifyUsers($primaociIds, [
                     'title' => '📋 Novi zadatak',
                     'body'  => mb_substr($tekst, 0, 120),

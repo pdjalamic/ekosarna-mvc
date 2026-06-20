@@ -83,6 +83,11 @@ class TimController extends \Core\Controller
                 $this->json(['ok' => true, 'vidi_imenik' => (int)$row['vidi_imenik']]);
                 break;
 
+            case 'tim_toggle_magacin':
+                $row = Korisnik::toggleMagacin($id);
+                $this->json(['ok' => true, 'vidi_magacin' => (int)$row['vidi_magacin']]);
+                break;
+
             case 'tim_change_uloga':
                 $uloge_dozvoljene = array_merge(Auth::ULOGE_ADMIN, Auth::ULOGE_OPERATER, Auth::ULOGE_ELEKTRICAR);
                 $uloga = in_array($_POST['uloga'] ?? '', $uloge_dozvoljene, true) ? $_POST['uloga'] : 'Operater';

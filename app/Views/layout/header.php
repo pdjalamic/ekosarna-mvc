@@ -142,17 +142,19 @@
       ?>
     </a>
 
+    <?php if (\Core\Auth::canMagacin()): ?>
+    <a href="<?= BASE_URL ?>/?page=magacin" class="<?= $active_page === 'magacin' ? 'active' : '' ?>">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
+      Magacin
+    </a>
+    <?php endif; ?>
+
     <?php if ($is_admin): ?>
     <hr class="sidebar-sep">
 
     <a href="<?= BASE_URL ?>/?page=imenik" class="<?= $active_page === 'imenik' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
       Imenik
-    </a>
-
-    <a href="<?= BASE_URL ?>/?page=magacin" class="<?= $active_page === 'magacin' ? 'active' : '' ?>">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4"/></svg>
-      Magacin
     </a>
 
     <a href="<?= BASE_URL ?>/?page=obavestenja" class="<?= ($active_page === 'obavestenja' && ($_GET['view'] ?? '') !== 'izvestaji') ? 'active' : '' ?>">

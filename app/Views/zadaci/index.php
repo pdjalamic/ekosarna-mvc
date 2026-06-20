@@ -422,14 +422,16 @@ function filterZadaci() {
 
 function dodajZadatak() {
     var tekst = document.getElementById('z-tekst').value.trim();
+    var dodeljeno = document.getElementById('z-dodeljeno').value;
     var err   = document.getElementById('z-add-err');
     err.style.display = 'none';
     if (!tekst) { err.textContent='Upiši tekst.'; err.style.display='block'; return; }
+    if (!dodeljeno) { err.textContent='Izaberi kome dodeljuješ zadatak.'; err.style.display='block'; return; }
     post({
         _action:'zadatak_add', tekst:tekst,
         kategorija: document.getElementById('z-kat').value.trim(),
         rok: document.getElementById('z-rok').value,
-        dodeljeno_id: document.getElementById('z-dodeljeno').value,
+        dodeljeno_id: dodeljeno,
     }).then(function(d) {
         if (d.ok) location.reload();
         else { err.textContent = d.err||'Greška.'; err.style.display='block'; }

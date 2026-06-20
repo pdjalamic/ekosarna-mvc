@@ -79,6 +79,9 @@
         <button class="btn-sm <?= !empty($u['vidi_imenik']) ? 'mark':'' ?>" onclick="timToggleImenik(<?= $u['id'] ?>)" id="tim-imenik-<?= $u['id'] ?>" style="color:var(--muted);">
           📖 <?= !empty($u['vidi_imenik']) ? 'Imenik: DA':'Imenik: NE' ?>
         </button>
+        <button class="btn-sm <?= !empty($u['vidi_magacin']) ? 'mark':'' ?>" onclick="timToggleMagacin(<?= $u['id'] ?>)" id="tim-magacin-<?= $u['id'] ?>" style="color:var(--muted);">
+          📦 <?= !empty($u['vidi_magacin']) ? 'Magacin: DA':'Magacin: NE' ?>
+        </button>
         <button class="btn-sm del" onclick="timDelete(<?= $u['id'] ?>)">🗑</button>
         <?php else: ?>
         <span style="font-size:11px;color:var(--muted);">(vi)</span>

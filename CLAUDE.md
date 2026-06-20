@@ -34,7 +34,8 @@ Uloge se prikazuju pod više naziva, ali mapiraju na 3 nivoa ovlašćenja (konst
 Sve provere (`isAdmin/isOperater/isElektricar/isKancelarija`) i SQL `IN` liste rade preko ovih konstanti — koristi ih kao jedini izvor istine, ne hardkoduj nazive.
 
 - **Raspored**: u raspored (i kao „odgovoran za unos materijala") mogu operativa + teren (`ULOGE_OPERATER` + `ULOGE_ELEKTRICAR`); admini (Direktor/AT/AF) ne. Vidi `RasporedController::index()`.
-- **Zadaci**: zadaju (i menjaju/brišu) **samo** Direktor i Inženjer na gradilištu; primaju **samo** AT i AF. Samododela ne postoji. Konstante `ZADACI_ZADAJU` / `ZADACI_PRIMAJU` u `ZadaciController.php`.
+- **Zadaci**: zadaju (i menjaju/brišu) **samo** Direktor i Inženjer na gradilištu (konstanta `ZADACI_ZADAJU` u `ZadaciController.php`); dodeljuju ih bilo kom **aktivnom** korisniku iz bilo kog tima. Dodela osobe je **obavezna** pri kreiranju (nema „pošalji svima" fallback-a). Samododela ne postoji.
+- **Magacin**: vide ga i koriste **admini uvek**, a ostali po per-korisnik flag-u `vidi_magacin` (TINYINT u `admin_korisnici`, kao `vidi_imenik`). Provera: `Auth::canMagacin()` / `Auth::requireMagacin()` — čita flag **uživo iz baze** (ne iz sesije, ne iz naziva uloge). Flag se pali/gasi dugmetom „📦 Magacin: DA/NE" na stranici **Tim** (`tim_toggle_magacin`).
 - **ENUM kolona `uloga`**: kolacija je accent-insensitive — ne dodavati dve vrednosti koje se razlikuju samo po kvačici (npr. `Elektricar`/`Električar`) jer ENUM puca greškom 1291 (duplikat).
 
 ## Architecture
@@ -57,11 +58,11 @@ Autoloading is a simple `spl_autoload_register` in each entry point mapping `Nam
 
 ### Authentication & roles
 `Core\Auth` is session-based. Three roles in `admin_korisnici.uloga`:
-- **Administrator** — full access (only role that sees `magacin`, `imenik`, `obavestenja`, `tim`).
+- **Administrator** — full access (only role that sees `imenik`, `obavestenja`, `tim`; `magacin` is admin-always plus any user with the per-user `vidi_magacin` flag — see `Auth::canMagacin()`).
 - **Operater** — office staff; everything except admin-only pages.
 - **Elektricar** — field electrician; restricted by the router to `danas`, `poruke`, `hr`, `evidencija`, `nabavka` only, and defaults to the `danas` screen.
 
-Enforce access with `Auth::requireLogin()` / `requireAdmin()` / `requireKancelarija()` and the `isAdmin()`/`isElektricar()`/`isKancelarija()` checks. The router also gates pages and AJAX prefixes (e.g. `obavestenja_*`/`magacin_*`/`evidencija_*` call `Auth::requireAdmin()`). Sessions auto-expire after 2h of inactivity.
+Enforce access with `Auth::requireLogin()` / `requireAdmin()` / `requireKancelarija()` and the `isAdmin()`/`isElektricar()`/`isKancelarija()` checks. The router also gates pages and AJAX prefixes (e.g. `obavestenja_*`/`evidencija_*` call `Auth::requireAdmin()`; `magacin_*` calls `Auth::requireMagacin()` — admins + Inženjer na gradilištu). Sessions auto-expire after 2h of inactivity.
 
 ### Secondary entry points (bypass the router)
 These are called directly (whitelisted in `htaccess`) and each re-implements the autoloader + Config bootstrap:

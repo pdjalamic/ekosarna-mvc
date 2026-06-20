@@ -50,6 +50,9 @@ if ($je_direktor) {
         ['evidencija', 'Evidencija', $ico['evidencija'], null,                 0,                       '#16a34a', 'Evidencija i izveštaji'],
         ['hr',         'Moj profil', $ico['profil'],     null,                 0,                       '#0891b2', 'Tvoji lični podaci'],
     ];
+    if (\Core\Auth::canMagacin()) {
+        $tiles[] = ['magacin', 'Magacin', $ico['magacin'], null, 0, '#475569', 'Stanje i kretanje magacina'];
+    }
     $primarni = count($tiles);
 } else {
     $tiles = [
@@ -62,6 +65,9 @@ if ($je_direktor) {
         ['hr',         'Zaposleni',     $ico['zaposleni'],  null,                0,                       '#0891b2', 'Evidencija i pregled zaposlenih'],
         ['evidencija', 'Evidencija',    $ico['evidencija'], null,                0,                       '#16a34a', 'Evidencija i izveštaji'],
     ];
+    if (!$is_admin && \Core\Auth::canMagacin()) {
+        $tiles[] = ['magacin', 'Magacin', $ico['magacin'], null, 0, '#475569', 'Stanje i kretanje magacina'];
+    }
     if ($is_admin) {
         $tiles[] = ['tim',         'Tim',         $ico['tim'],         null, 0, '#4f46e5', 'Upravljanje timovima i ulogama'];
         $tiles[] = ['magacin',     'Magacin',     $ico['magacin'],     null, 0, '#475569', 'Stanje i kretanje magacina'];

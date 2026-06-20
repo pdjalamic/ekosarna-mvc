@@ -20,7 +20,7 @@ class Korisnik
         try { DB::exec("ALTER TABLE admin_korisnici ADD COLUMN platforma2 VARCHAR(20) DEFAULT NULL"); } catch (\PDOException $e) {}
 
         $stmt = DB::prepare(
-            "SELECT id, ime, email, telefon, username, uloga, aktivan, vidi_imenik,
+            "SELECT id, ime, email, telefon, username, uloga, aktivan, vidi_imenik, vidi_magacin,
                     datum_kreiranja,
                     COALESCE(telegram_username,'') as telegram_username,
                     COALESCE(platforma,'android') as platforma,
@@ -93,6 +93,15 @@ class Korisnik
         DB::prepare("UPDATE admin_korisnici SET vidi_imenik = 1 - vidi_imenik WHERE id=?")
           ->execute([$id]);
         $stmt = DB::prepare("SELECT vidi_imenik FROM admin_korisnici WHERE id=?");
+        $stmt->execute([$id]);
+        return $stmt->fetch();
+    }
+
+    public static function toggleMagacin(int $id): array
+    {
+        DB::prepare("UPDATE admin_korisnici SET vidi_magacin = 1 - vidi_magacin WHERE id=?")
+          ->execute([$id]);
+        $stmt = DB::prepare("SELECT vidi_magacin FROM admin_korisnici WHERE id=?");
         $stmt->execute([$id]);
         return $stmt->fetch();
     }
