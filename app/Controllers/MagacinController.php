@@ -762,10 +762,21 @@ PROMPT;
             $staroStanje = $this->stanjeArtikla($st_naziv, $st_jm, $lokacija, $nam_staro);
             $datum = date('Y-m-d');
 
+            // Strukturna izmena = dira i druge redove → frontend mora pun reload.
+            // (a) preimenovanje/JM kaskadira na sve lokacije;
+            $renamed = ($nv_naziv !== $st_naziv || $nv_jm !== $st_jm);
+
             // 1) Preimenovanje / JM — na svim lokacijama radi konzistentnosti (uradi prvo)
-            if ($nv_naziv !== $st_naziv || $nv_jm !== $st_jm) {
+            if ($renamed) {
                 $this->db->prepare("UPDATE magacin_promet SET naziv=?, jm=? WHERE naziv=? AND jm=?")
                     ->execute([$nv_naziv, $nv_jm, $st_naziv, $st_jm]);
+            }
+
+            // (b) promena namene u grupu koja na toj lokaciji već ima stanje → spajanje redova.
+            $strukturna = $renamed;
+            if ($nam_novo !== $nam_staro) {
+                $ciljnoPostojece = $this->stanjeArtikla($nv_naziv, $nv_jm, $lokacija, $nam_novo);
+                if (abs($ciljnoPostojece) >= 0.0005) $strukturna = true;
             }
 
             $korekcija = $this->db->prepare("INSERT INTO magacin_promet
@@ -792,7 +803,7 @@ PROMPT;
                 ['naziv' => $st_naziv, 'jm' => $st_jm, 'lokacija' => $lokacija, 'namenjeno' => $this->gradNaziv($nam_staro), 'stanje' => $staroStanje],
                 ['naziv' => $nv_naziv, 'jm' => $nv_jm, 'lokacija' => $lokacija, 'namenjeno' => $this->gradNaziv($nam_novo), 'stanje' => $nv_kol], $uid);
 
-            $this->json(['ok' => true]);
+            $this->json(['ok' => true, 'reload' => $strukturna]);
         }
 
         // ── Obriši primku ────────────────────────────────────

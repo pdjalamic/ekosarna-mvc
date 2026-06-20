@@ -1006,7 +1006,18 @@ function sacuvajPremestiLok() {
 }
 
 // ── Izmena stavke ulaza (Ulaz robe) ──────────────────────────
+var _magUrediRow = null;
+var _magUrediBtn = null;
+var _magIzmenaRow = null;
+
+// Format broja: 1234.5 -> "1.234,50"
+function fmtBroj(n) {
+    return Number(n).toLocaleString('sr-RS', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 function openUrediStavku(btn) {
+    _magUrediBtn = btn;
+    _magUrediRow = btn.closest('tr');
     document.getElementById('us-id').value       = btn.dataset.id;
     document.getElementById('us-naziv').value    = btn.dataset.naziv;
     document.getElementById('us-kolicina').value = btn.dataset.kolicina;
@@ -1031,14 +1042,43 @@ function sacuvajUrediStavku() {
     fd.append('gradiliste_id', lok.gradiliste_id);
     fd.append('namenjeno_gradiliste_id', document.getElementById('us-namenjeno').value);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-        if (d.ok) { document.getElementById('uredi-stavku-modal').style.display = 'none'; location.reload(); }
-        else { var e = document.getElementById('us-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+        if (!d.ok) { var e = document.getElementById('us-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; return; }
+
+        // Ažuriraj samo taj red (bez reload-a)
+        var naziv = document.getElementById('us-naziv').value;
+        var kol   = parseFloat(document.getElementById('us-kolicina').value) || 0;
+        var jm    = document.getElementById('us-jm').value;
+        var lokSel = document.getElementById('us-lokacija');
+        var lokText = lokSel.options[lokSel.selectedIndex] ? lokSel.options[lokSel.selectedIndex].text : '';
+        var namSel = document.getElementById('us-namenjeno');
+        var namId  = namSel.value;
+        var namNaziv = (namId && namSel.options[namSel.selectedIndex]) ? namSel.options[namSel.selectedIndex].text : '';
+
+        var r = _magUrediRow;
+        if (r) {
+            var tds = r.querySelectorAll('td'); // [1]naziv [2]kolicina [3]jm [4]lokacija [5]namenjeno
+            if (tds[1]) tds[1].textContent = naziv;
+            if (tds[2]) tds[2].textContent = fmtBroj(kol);
+            if (tds[3]) tds[3].textContent = jm;
+            if (tds[4]) tds[4].innerHTML = '<span style="background:#fff;border:1px solid var(--light2);border-radius:4px;padding:1px 7px;">' + esc(lokText) + '</span>';
+            if (tds[5]) tds[5].innerHTML = namNaziv ? '<span class="st-namenjeno-chip">🎯 ' + esc(namNaziv) + '</span>' : '<span style="color:var(--muted);">—</span>';
+        }
+        if (_magUrediBtn) {
+            _magUrediBtn.dataset.naziv      = naziv;
+            _magUrediBtn.dataset.kolicina   = kol;
+            _magUrediBtn.dataset.jm         = jm;
+            _magUrediBtn.dataset.lokacija   = lokText;
+            _magUrediBtn.dataset.gradiliste = lok.gradiliste_id || 0;
+            _magUrediBtn.dataset.namenjeno  = namId || 0;
+        }
+        document.getElementById('uredi-stavku-modal').style.display = 'none';
     });
 }
 
 // ── Izmena stavke (pun edit + log) ───────────────────────────
 function openIzmena(btn) {
     var r = btn.closest('.stanje-red');
+    _magIzmenaRow = r;
     document.getElementById('izmena-stari-naziv').value = r.dataset.naziv;
     document.getElementById('izmena-stari-jm').value    = r.dataset.jm;
     document.getElementById('izmena-lokacija').value    = r.dataset.lokacija;
@@ -1068,8 +1108,36 @@ function sacuvajIzmena() {
     fd.append('namenjeno_staro', document.getElementById('izmena-namenjeno-staro').value);
     fd.append('namenjeno_gradiliste_id', document.getElementById('izmena-namenjeno').value);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
-        if (d.ok) { document.getElementById('izmena-modal').style.display = 'none'; location.reload(); }
-        else { var e = document.getElementById('izmena-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
+        if (!d.ok) { var e = document.getElementById('izmena-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; return; }
+
+        // Strukturna izmena (preimenovanje / spajanje namene) dira i druge redove → pun reload
+        if (d.reload) { location.reload(); return; }
+
+        // Inače ažuriraj samo taj red (bez reload-a)
+        var naziv = document.getElementById('izmena-naziv').value;
+        var jm    = document.getElementById('izmena-jm').value;
+        var kol   = parseFloat(document.getElementById('izmena-kolicina').value) || 0;
+        var namSel = document.getElementById('izmena-namenjeno');
+        var namId  = namSel.value;
+        var namNaziv = (namId && namSel.options[namSel.selectedIndex]) ? namSel.options[namSel.selectedIndex].text : '';
+
+        var r = _magIzmenaRow;
+        if (r) {
+            r.dataset.naziv          = naziv;
+            r.dataset.nazivLower     = naziv.toLowerCase();
+            r.dataset.jm             = jm;
+            r.dataset.namenjeno      = namId || 0;
+            r.dataset.namenjenoNaziv = namNaziv;
+            r.dataset.stanje         = kol;
+
+            var ime = r.querySelector('.st-ime');
+            if (ime) ime.innerHTML = esc(naziv) + (namNaziv ? ' <span class="st-namenjeno-chip">🎯 ' + esc(namNaziv) + '</span>' : '');
+            var jmEl = r.querySelector('.st-jm');
+            if (jmEl) jmEl.textContent = jm;
+            var kolEl = r.querySelector('.st-kol');
+            if (kolEl) { kolEl.textContent = fmtBroj(kol); kolEl.style.color = kol >= 0 ? '#059669' : '#dc2626'; }
+        }
+        document.getElementById('izmena-modal').style.display = 'none';
     });
 }
 
