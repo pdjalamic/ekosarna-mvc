@@ -55,6 +55,47 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
     <?php endif; ?>
 </div>
 
+<?php if (!empty($nacrti)): ?>
+<div class="rs-nacrti">
+    <div class="rs-nacrti-head">📝 Nacrti — još nisu objavljeni (ekipa nije obaveštena)</div>
+    <?php foreach ($nacrti as $n): $di = $n['dan_index']; $brn = count($n['stavke']); ?>
+    <div class="rs-nacrti-dan">
+        <div class="rs-nacrti-dan-head">
+            <span><?= $dani_puni[$di] ?? '' ?> · <?= date('d.m.Y', strtotime($n['datum'])) ?></span>
+            <button type="button" class="rs-objavi-btn"
+                onclick="objaviDan(<?= $n['dan_id'] ?>, <?= $brn ?>)">
+                📢 Objavi <?= $brn ?> <?= $brn == 1 ? 'nacrt' : 'nacrta' ?>
+            </button>
+        </div>
+        <?php foreach ($n['stavke'] as $s):
+            $gn  = $s['gradiliste_naziv'] ?? '';
+            $gb  = $gn ? gradiliste_boja($gn) : '';
+            $gbt = $gn ? gradiliste_boja_text($gn) : '';
+        ?>
+        <div class="rs-nacrt-red">
+            <div class="rs-nacrt-info">
+                <?php if ($gn): ?>
+                <span class="rs-grad-chip" style="background:<?= $gb ?>;color:<?= $gbt ?>;"><?= h($gn) ?></span>
+                <?php endif; ?>
+                <span class="rs-nacrt-opis"><?= $s['opis'] ? h(mb_substr($s['opis'], 0, 80)) . (mb_strlen($s['opis']) > 80 ? '…' : '') : '—' ?></span>
+                <span class="rs-nacrt-ekipa">
+                    <?php foreach ($s['radnici'] as $r): $jeOdg = ($s['odgovoran_id'] && $s['odgovoran_id'] == $r['radnik_id']); ?>
+                    <span><?= $jeOdg ? '📦' : '👷' ?> <?= h($r['ime']) ?><?php if ($r['vreme_od']): ?> <span style="opacity:.7;">(<?= substr($r['vreme_od'],0,5) ?>–<?= substr($r['vreme_do'],0,5) ?>)</span><?php endif; ?></span>
+                    <?php endforeach; ?>
+                </span>
+            </div>
+            <div class="rs-nacrt-akcije">
+                <button type="button" class="rs-objavi-btn" onclick="objaviStavku(<?= $s['id'] ?>)">Objavi</button>
+                <button type="button" class="btn-sm" onclick="openIzmeniStavku(<?= $s['id'] ?>, <?= $di ?>)" title="Izmeni">✏️</button>
+                <button type="button" class="btn-sm del" onclick="obrisiStavku(<?= $s['id'] ?>)" title="Obriši">🗑</button>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
+    <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <?php if (empty($dani) && !$nedelja): ?>
 <div class="empty">
     <big>📅</big>
@@ -251,9 +292,10 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
         </div>
 
         <div id="rs-err" style="color:#dc2626;font-size:12px;margin-top:8px;display:none;"></div>
-        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px;flex-wrap:wrap;">
             <button class="mail-cancel-btn" onclick="zatvoriRsModal()">Odustani</button>
-            <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="sacuvajStavku()">Sačuvaj</button>
+            <button class="tim-add-btn" style="width:auto;padding:10px 16px;background:#64748b;" onclick="sacuvajStavku('nacrt')">💾 Snimi privremeno</button>
+            <button class="tim-add-btn" style="width:auto;padding:10px 16px;" onclick="sacuvajStavku('objavljeno')">📢 Objavi</button>
         </div>
     </div>
 </div>
@@ -302,6 +344,22 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 .rs-el-name { flex:1;display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500; }
 .rs-el-remove { background:none;border:none;color:#dc2626;cursor:pointer;font-size:15px;line-height:1;padding:4px 7px;border-radius:6px; }
 .rs-el-remove:hover { background:#fee2e2; }
+
+/* ── Nacrti (draft) blok ── */
+.rs-nacrti { border:1.5px dashed #f59e0b;background:#fffbeb;border-radius:12px;padding:12px 14px;margin-bottom:16px; }
+.rs-nacrti-head { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#b45309;margin-bottom:10px; }
+.rs-nacrti-dan { margin-bottom:12px; }
+.rs-nacrti-dan:last-child { margin-bottom:0; }
+.rs-nacrti-dan-head { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:700;color:var(--blue);padding-bottom:6px;border-bottom:1px solid #fde68a;margin-bottom:6px; }
+.rs-nacrt-red { display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;background:#fff;border:1px solid #fde68a;border-radius:8px;padding:8px 10px;margin-bottom:6px; }
+.rs-nacrt-red:last-child { margin-bottom:0; }
+.rs-nacrt-info { display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;flex:1;min-width:0; }
+.rs-grad-chip { border-radius:6px;padding:3px 10px;font-size:12px;font-weight:700;white-space:nowrap; }
+.rs-nacrt-opis { color:var(--text); }
+.rs-nacrt-ekipa { font-size:12px;color:var(--muted);display:flex;gap:8px;flex-wrap:wrap; }
+.rs-nacrt-akcije { display:flex;gap:4px;align-items:center;white-space:nowrap; }
+.rs-objavi-btn { background:#16a34a;color:#fff;border:none;border-radius:7px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer; }
+.rs-objavi-btn:hover { background:#15803d; }
 
 /* ── Mobilni: nedeljni raspored kao kartice (bez horizontalnog skrola) ── */
 @media (max-width:720px) {
@@ -530,7 +588,8 @@ function skupiRadnike() {
     return radnici;
 }
 
-function sacuvajStavku() {
+function sacuvajStavku(status) {
+    status = (status === 'nacrt') ? 'nacrt' : 'objavljeno';
     var stavkaId = parseInt(document.getElementById('rs-stavka-id').value);
     var danId    = document.getElementById('rs-dan-id').value;
     var err      = document.getElementById('rs-err');
@@ -556,6 +615,7 @@ function sacuvajStavku() {
     fd.append('obavesti_tip', obavesti_tip);
     fd.append('obavesti_at', obavesti_at);
     fd.append('odgovoran_id', document.getElementById('rs-odgovoran-id').value || 0);
+    fd.append('status', status);
 
     _rsPendingData = fd;
 
@@ -591,6 +651,27 @@ function obrisiStavku(id) {
     fd.append('_action', 'raspored_obrisi_stavku');
     fd.append('id', id);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => { if (d.ok) location.reload(); });
+}
+
+function objaviStavku(id) {
+    if (!confirm('Objaviti ovaj nacrt? Ekipa će biti obaveštena.')) return;
+    var fd = new FormData();
+    fd.append('_action', 'raspored_objavi_stavku');
+    fd.append('id', id);
+    fetch('', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => { if (d.ok) location.reload(); else alert(d.err || 'Greška.'); });
+}
+
+function objaviDan(danId, broj) {
+    if (!confirm('Objaviti sve nacrte (' + broj + ') za ovaj dan? Cela ekipa će biti obaveštena.')) return;
+    var fd = new FormData();
+    fd.append('_action', 'raspored_objavi_dan');
+    fd.append('dan_id', danId);
+    fd.append('id', 0);
+    fetch('', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(d => { if (d.ok) location.reload(); else alert(d.err || 'Greška.'); });
 }
 
 function initNedelja() {

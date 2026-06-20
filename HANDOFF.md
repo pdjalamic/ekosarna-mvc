@@ -4,10 +4,72 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+00. [Magacin — izmena bez reload-a (osveži samo red)](#00-magacin--izmena-bez-reload-a-osvezi-samo-red)  · *2026-06-20* · 🔜 kod gotov + lint OK; test preostaje
+0. [Raspored — nacrt (draft) pre objave](#0-raspored--nacrt-draft-pre-objave)  · *2026-06-20* · 🔜 kod gotov + lint OK; SQL i test na produkciji preostaju
 1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ✅ test prošao na produkciji; komitovano
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## 00. Magacin — izmena bez reload-a (osveži samo red)
+
+**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. Test preostaje.
+
+### Cilj
+Izmena artikla u **Stanju zaliha** i u **Ulazu robe** je radila `location.reload()` cele strane → sporo kad lokacija ima 50+ artikala (npr. masovno postavljanje „namenjeno za"). Treba osvežiti **samo taj red**.
+
+### Rešenje
+- **Ulaz robe** (`magacin_uredi_stavku`): uvek bezbedno (svaka stavka = svoj red). JS ažurira ćelije reda (naziv/količina/JM/lokacija/„namenjeno" čip) + `data-*` atribute dugmeta iz vrednosti forme. Server nepromenjen.
+- **Stanje zaliha** (`magacin_izmeni_stanje`): ažurira red u mestu. **2 strukturna slučaja → pun reload** (vraća `reload:true`): (a) preimenovanje/JM (kaskadira na sve lokacije), (b) promena „namenjeno za" u grupu koja na toj lokaciji već ima stanje (spajanje redova). Detekcija u kontroleru pre korekcija.
+
+### Izmenjeni fajlovi (2)
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/MagacinController.php` | `magacin_izmeni_stanje`: `$renamed` + provera ciljne namena-grupe (`stanjeArtikla`) → `$strukturna`; vraća `['ok'=>true,'reload'=>$strukturna]`. |
+| `app/Views/magacin/index.php` | `openIzmena`/`openUrediStavku` pamte referencu na red (`_magIzmenaRow`/`_magUrediRow`/`_magUrediBtn`); `sacuvajIzmena` (reload fallback + in-place) i `sacuvajUrediStavku` (in-place) umesto `location.reload()`; novi helper `fmtBroj()` (format „1.234,56", `sr-RS`). |
+
+### Napomene / test
+- Prenos / „Premesti lokaciju" / brisanje primke i dalje rade reload (strukturne radnje) — namerno.
+- Test: u Stanju postavi „namenjeno za" na artikl bez namene → red se trenutno osveži (čip), bez skoka na vrh strane; promeni samo količinu → trenutno; preimenuj artikl → pun reload (očekivano). U Ulazu izmeni stavku → red se osveži u mestu.
+- Nema izmene baze.
+
+---
+
+## 0. Raspored — nacrt (draft) pre objave
+
+**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL na produkciji + test PREOSTAJE.**
+
+### Cilj
+Inženjer pravi dnevni raspored uz prekide. Treba mu da snima raspored kao **nacrt** dok ne završi — **bez slanja obaveštenja ekipi** — pa da na kraju **objavi** (tek tada obaveštenja odlete).
+
+### Odluke (potvrđeno sa naručiocem)
+- Vizuelno: **odvojen blok „📝 NACRTI" na vrhu** strane, grupisan po danu (objavljeni raspored ostaje čist u postojećoj tabeli ispod).
+- Objava: **po danu** („📢 Objavi N nacrta") **+ pojedinačno** („Objavi" na svakoj nacrt-stavki).
+- U modalu: „Sačuvaj" → **dva dugmeta**: `💾 Snimi privremeno` (nacrt, bez obaveštenja) i `📢 Objavi` (objavljeno + obaveštenje kao do sada).
+
+### Izmenjeni / novi fajlovi (3)
+| Fajl | Izmena |
+|---|---|
+| `raspored_nacrt.sql` | **NOV.** `ALTER TABLE raspored_stavke ADD COLUMN IF NOT EXISTS status ENUM('nacrt','objavljeno') NOT NULL DEFAULT 'objavljeno'`. Idempotentno (MariaDB). **Pokrenuti JEDNOM na produkciji PRE deploya** — kontroler radi `INSERT ... status`, pa bez kolone unos stavke puca. |
+| `app/Controllers/RasporedController.php` | `index()` razdvaja nacrte (`$nacrti`, grupisano po danu) od objavljenih (glavna tabela). `raspored_dodaj_stavku`/`raspored_izmeni_stavku` primaju `status`; za `nacrt` se `obavesti_tip` forsira na `'ne'` (bez obaveštenja) + `status` u INSERT/UPDATE. Nove akcije `raspored_objavi_stavku` i `raspored_objavi_dan` + helper `objaviStavkuInterno()` (status→objavljeno + obaveštenje ekipi, idempotentno). `raspored_kopiraj` čuva `status`. |
+| `app/Views/raspored/index.php` | Gornji blok „📝 NACRTI" (po danu, sa „Objavi N nacrta" + po stavci Objavi/✏️/🗑) + CSS. Modal: dva dugmeta. JS: `sacuvajStavku(status)`, `objaviStavku(id)`, `objaviDan(danId, broj)`. |
+
+Router nije menjan — `raspored_*` ide po prefiksu (`Router.php:158`), nove akcije se automatski dispatchuju.
+
+### Ponašanje / edge-case
+- Dan koji ima samo nacrte → u glavnoj tabeli pokazuje „Nema zadataka" (nacrti su u gornjem bloku). Očekivano.
+- Editovanje objavljene stavke + „Snimi privremeno" = vraća je u nacrt (bez de-notifikacije već poslatih). Logički dosledno; OK.
+- Radio „Obavesti odmah/Zakaži/Ne" ostaje i važi za **Objavi**; za nacrt se ignoriše.
+
+### Deploy redosled
+1. Pokreni `raspored_nacrt.sql` na produkciji (i lokalno za test).
+2. Uploaduj `app/Controllers/RasporedController.php` + `app/Views/raspored/index.php`.
+3. Test: dodaj stavku „Snimi privremeno" → pojavi se u NACRTI bloku, ekipa NIJE obaveštena → „Objavi" (stavka/dan) → prelazi u glavnu tabelu + ekipa dobije obaveštenje.
+
+### Sledeći korak
+- Lokalni/produkcioni test po gornjem; ako OK → commit (1 SQL + 2 fajla). Predlog poruke: `Raspored: nacrt (draft) pre objave — Snimi privremeno vs Objavi + blok Nacrti`.
 
 ---
 

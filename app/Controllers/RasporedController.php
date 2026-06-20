@@ -41,6 +41,7 @@ class RasporedController extends \Core\Controller
         $nedelja = $stmt->fetch(\PDO::FETCH_ASSOC);
 
         $dani = [];
+        $nacrti = [];
         if ($nedelja) {
             $stmt = $this->db->prepare("SELECT * FROM raspored_dani WHERE nedelja_id=? ORDER BY datum ASC");
             $stmt->execute([$nedelja['id']]);
@@ -101,8 +102,28 @@ class RasporedController extends \Core\Controller
                         $s['nove_poruke_count'] = 0;
                     }
                 }
-                $dan['stavke'] = $stavke;
+                unset($s);
+
+                // Razdvoj objavljene (idu u glavnu tabelu) od nacrta (gornji blok)
+                $objavljene = [];
+                $nacrtStavke = [];
+                foreach ($stavke as $st) {
+                    if (($st['status'] ?? 'objavljeno') === 'nacrt') $nacrtStavke[] = $st;
+                    else $objavljene[] = $st;
+                }
+                $dan['stavke'] = $objavljene;
+
+                if ($nacrtStavke) {
+                    $dan_index = (int)round((strtotime($dan['datum']) - strtotime($ponedeljak)) / 86400);
+                    $nacrti[] = [
+                        'dan_id'    => $dan['id'],
+                        'datum'     => $dan['datum'],
+                        'dan_index' => $dan_index,
+                        'stavke'    => $nacrtStavke,
+                    ];
+                }
             }
+            unset($dan);
         }
 
         // Unos materijala / dodela u raspored: teren + gradilište
@@ -129,7 +150,7 @@ class RasporedController extends \Core\Controller
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
         $this->view('raspored/index', compact(
-            'nedelja', 'dani', 'elektricari', 'gradilista',
+            'nedelja', 'dani', 'nacrti', 'elektricari', 'gradilista',
             'ponedeljak', 'petak', 'subota', 'boje',
             'prethodna_nedelja', 'sledeca_nedelja', 'sve_nedelje'
         ));
@@ -180,6 +201,8 @@ class RasporedController extends \Core\Controller
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
                 $odgovoran_ime = $this->imeRadnika($odgovoran_id);
+                $status        = (($_POST['status'] ?? '') === 'nacrt') ? 'nacrt' : 'objavljeno';
+                if ($status === 'nacrt') $obavesti_tip = 'ne'; // nacrt = ekipa se NE obaveštava
 
                 if (!$dan_id) $this->json(['ok' => false, 'err' => 'Nema dana.']);
 
@@ -201,10 +224,10 @@ class RasporedController extends \Core\Controller
                 $redosled = (int)$stmt->fetchColumn();
 
                 $stmt = $this->db->prepare("
-                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id]);
+                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id, $status]);
                 $stavka_id = $this->db->lastInsertId();
 
                 $upozorenja = [];
@@ -260,6 +283,8 @@ class RasporedController extends \Core\Controller
                 $obavesti_at   = $_POST['obavesti_at'] ?? null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
                 $odgovoran_ime = $this->imeRadnika($odgovoran_id);
+                $status        = (($_POST['status'] ?? '') === 'nacrt') ? 'nacrt' : 'objavljeno';
+                if ($status === 'nacrt') $obavesti_tip = 'ne'; // nacrt = ekipa se NE obaveštava
 
                 // Staro stanje
                 $staroStmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE id=?");
@@ -292,9 +317,9 @@ class RasporedController extends \Core\Controller
                 $danStmt->execute([$staro['dan_id']]);
                 $datum_fmt = date('d.m.Y', strtotime($danStmt->fetchColumn()));
 
-                // Ažuriraj stavku (sa odgovoran_id)
-                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=? WHERE id=?");
-                $stmt->execute([$gradiliste_id, $opis, $odgovoran_id, $id]);
+                // Ažuriraj stavku (sa odgovoran_id i status)
+                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=?, status=? WHERE id=?");
+                $stmt->execute([$gradiliste_id, $opis, $odgovoran_id, $status, $id]);
 
                 // Nova lista radnika
                 $noviMap = [];
@@ -485,9 +510,9 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                     $stmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE dan_id=?");
                     $stmt->execute([$dan['id']]);
                     foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $s) {
-                        // Kopiraj i odgovoran_id
-                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id) VALUES (?, ?, ?, ?, ?)");
-                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled'], $s['odgovoran_id']]);
+                        // Kopiraj i odgovoran_id i status (nacrt ostaje nacrt)
+                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status) VALUES (?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled'], $s['odgovoran_id'], $s['status'] ?? 'objavljeno']);
                         $nova_stavka_id = $this->db->lastInsertId();
 
                         $stmt = $this->db->prepare("SELECT * FROM raspored_radnici WHERE stavka_id=?");
@@ -609,8 +634,70 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $this->json(['ok' => true]);
                 break;
 
+            case 'raspored_objavi_stavku':
+                if (!$id) $this->json(['ok' => false, 'err' => 'Nema stavke.']);
+                $this->objaviStavkuInterno($id);
+                $this->json(['ok' => true]);
+                break;
+
+            case 'raspored_objavi_dan':
+                $dan_id = (int)($_POST['dan_id'] ?? $id);
+                if (!$dan_id) $this->json(['ok' => false, 'err' => 'Nema dana.']);
+                $stmt = $this->db->prepare("SELECT id FROM raspored_stavke WHERE dan_id=? AND status='nacrt'");
+                $stmt->execute([$dan_id]);
+                $ids = $stmt->fetchAll(\PDO::FETCH_COLUMN);
+                foreach ($ids as $sid) {
+                    $this->objaviStavkuInterno((int)$sid);
+                }
+                $this->json(['ok' => true, 'broj' => count($ids)]);
+                break;
+
             default:
                 $this->json(['ok' => false, 'err' => 'Nepoznata akcija.']);
+        }
+    }
+
+    /**
+     * Objavi jedan nacrt: status -> 'objavljeno' i obavesti svu ekipu na stavci.
+     * Idempotentno: već objavljena stavka se preskače (bez ponovnog obaveštenja).
+     */
+    private function objaviStavkuInterno(int $stavka_id): void
+    {
+        $st = $this->db->prepare("
+            SELECT rs.*, rd.datum
+            FROM raspored_stavke rs
+            JOIN raspored_dani rd ON rs.dan_id = rd.id
+            WHERE rs.id = ?
+        ");
+        $st->execute([$stavka_id]);
+        $s = $st->fetch(\PDO::FETCH_ASSOC);
+        if (!$s) return;
+        if (($s['status'] ?? '') === 'objavljeno') return;
+
+        $this->db->prepare("UPDATE raspored_stavke SET status='objavljeno' WHERE id=?")->execute([$stavka_id]);
+
+        $gNaziv = '';
+        if ($s['gradiliste_id']) {
+            $gs = $this->db->prepare("SELECT naziv FROM gradilista WHERE id=?");
+            $gs->execute([$s['gradiliste_id']]);
+            $gNaziv = $gs->fetchColumn() ?: '';
+        }
+        $odgovoran_id  = $s['odgovoran_id'] ? (int)$s['odgovoran_id'] : null;
+        $odgovoran_ime = $this->imeRadnika($odgovoran_id);
+        $datum_fmt     = date('d.m.Y', strtotime($s['datum']));
+
+        $rs = $this->db->prepare("SELECT radnik_id, vreme_od, vreme_do FROM raspored_radnici WHERE stavka_id=?");
+        $rs->execute([$stavka_id]);
+        foreach ($rs->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $radnik_id   = (int)$r['radnik_id'];
+            $jeOdgovoran = ($odgovoran_id && $odgovoran_id === $radnik_id);
+            $poruka = "📋 Dodeljen si na zadatak: {$s['opis']}\n🏗️ Gradilište: {$gNaziv}\n📅 Datum: {$datum_fmt}\n🕐 Vreme: " . substr($r['vreme_od'],0,5) . " – " . substr($r['vreme_do'],0,5);
+            if ($jeOdgovoran) {
+                $poruka .= "\n📦 Ti si odgovoran za unos materijala";
+            } elseif ($odgovoran_id && $odgovoran_ime !== '') {
+                $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
+            }
+            $this->notifikuj($radnik_id, Auth::ime(), $poruka);
         }
     }
 
