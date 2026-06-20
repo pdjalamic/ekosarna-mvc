@@ -88,6 +88,16 @@ if ('serviceWorker' in navigator && 'PushManager' in window) {
   console.log('[Push] SW nije podržan — serviceWorker:', ('serviceWorker' in navigator), 'PushManager:', ('PushManager' in window));
 }
 
+// Navigacija na klik notifikacije: SW fokusira ovaj prozor i pošalje nam URL.
+// (Pouzdano i na Androidu, gde client.navigate() iz SW-a ume da zakaže.)
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', function(e) {
+    if (e.data && e.data.type === 'navigate' && e.data.url) {
+      window.location.href = e.data.url;
+    }
+  });
+}
+
 function askPushPermission(reg) {
   if (Notification.permission === 'granted') {
     subscribePush(reg);

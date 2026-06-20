@@ -1,5 +1,5 @@
 // Ekošarna Service Worker — Push Notifikacije
-const CACHE_NAME = 'ekosarna-v2';
+const CACHE_NAME = 'ekosarna-v3';
 
 // Instalacija
 self.addEventListener('install', function(e) {
@@ -63,13 +63,18 @@ self.addEventListener('notificationclick', function(e) {
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(function(clientList) {
-        // Ako je prozor/tab već otvoren — fokusiraj ga pa probaj da navigiraš.
-        // navigate() radi samo na prozoru kojim SW upravlja; ako padne (npr. na
-        // Androidu kad PWA prozor nije pod kontrolom), otvori novi prozor kao rezervu.
+        // Ako je prozor/tab već otvoren — fokusiraj ga i pošalji mu URL preko
+        // postMessage da sama stranica izvrši navigaciju. Ovo je pouzdano i na
+        // Androidu, gde client.navigate() često tiho zakaže na PWA prozoru.
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
           if (client.url.indexOf('/mvc/') !== -1 && 'focus' in client) {
             return client.focus().then(function(c) {
+              if (c && c.postMessage) {
+                c.postMessage({ type: 'navigate', url: url });
+                return c;
+              }
+              // Rezerva: probaj navigate(), pa otvori novi prozor
               if (c && c.navigate) {
                 return c.navigate(url).catch(function() {
                   return clients.openWindow ? clients.openWindow(url) : null;
@@ -79,7 +84,7 @@ self.addEventListener('notificationclick', function(e) {
             });
           }
         }
-        // Inače otvori novi prozor
+        // Nijedan prozor nije otvoren — otvori novi
         if (clients.openWindow) {
           return clients.openWindow(url);
         }

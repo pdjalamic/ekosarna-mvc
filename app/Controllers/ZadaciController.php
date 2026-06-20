@@ -174,7 +174,7 @@ if ($filters['status'] === '') {
                 PushController::notifyUsers($primaociIds, [
                     'title' => '📋 Novi zadatak',
                     'body'  => mb_substr($tekst, 0, 120),
-                    'url'   => BASE_URL . '/?page=zadaci',
+                    'url'   => BASE_URL . '/?page=zadaci&openz=' . $newId,
                     'tag'   => 'zadatak-' . $newId,
                     'icon'  => BASE_URL . '/public/icon-192.png',
                 ]);
@@ -192,7 +192,7 @@ if ($filters['status'] === '') {
                 break;
 
             case 'zadatak_prihvati':
-                $stmt = $this->db->prepare("SELECT dodeljeno_id, prihvaceno_id FROM interni_zadaci WHERE id=?");
+                $stmt = $this->db->prepare("SELECT dodeljeno_id, prihvaceno_id, kreirao_id, tekst FROM interni_zadaci WHERE id=?");
                 $stmt->execute([$id]);
                 $z = $stmt->fetch(\PDO::FETCH_ASSOC);
                 if (!$z) $this->json(['ok' => false, 'err' => 'Zadatak nije pronađen.']);
@@ -203,6 +203,19 @@ if ($filters['status'] === '') {
                     SET prihvaceno_id=?, prihvaceno_at=NOW(), status='u_toku'
                     WHERE id=?
                 ")->execute([$uid, $id]);
+
+                // Obavesti zadavaoca da je zadatak prihvaćen — osim ako je sam sebi zadao
+                $tekstZad = (string)($z['tekst'] ?? '');
+                $primaociIds = array_filter([(int)$z['kreirao_id']], fn($x) => $x && (int)$x !== (int)$uid);
+                if ($primaociIds) {
+                    PushController::notifyUsers($primaociIds, [
+                        'title' => '✅ Zadatak prihvaćen',
+                        'body'  => Auth::ime() . ' je prihvatio zadatak: ' . mb_substr($tekstZad, 0, 100),
+                        'url'   => BASE_URL . '/?page=zadaci&openz=' . $id,
+                        'tag'   => 'zadatak-' . $id,
+                        'icon'  => BASE_URL . '/public/icon-192.png',
+                    ]);
+                }
                 $this->json(['ok' => true]);
                 break;
 
@@ -214,7 +227,35 @@ if ($filters['status'] === '') {
                 $this->db->prepare("
                     INSERT INTO zadaci_komentari (zadatak_id, autor_id, tekst) VALUES (?,?,?)
                 ")->execute([$id, $uid, $tekst]);
-                $this->json(['ok' => true]);
+                $komId = (int)$this->db->lastInsertId();
+
+                // Vrati upisani komentar (da klijent sinhronizuje poll-kursor i prikaz)
+                $st = $this->db->prepare("
+                    SELECT zk.id, zk.autor_id, zk.tekst, zk.created_at, k.ime AS autor_ime
+                    FROM zadaci_komentari zk JOIN admin_korisnici k ON zk.autor_id=k.id
+                    WHERE zk.id=?
+                ");
+                $st->execute([$komId]);
+                $kom = $st->fetch(\PDO::FETCH_ASSOC);
+
+                // Obavesti drugu stranu (zadavalac + onaj koji je prihvatio), osim autora komentara
+                $st = $this->db->prepare("SELECT kreirao_id, prihvaceno_id FROM interni_zadaci WHERE id=?");
+                $st->execute([$id]);
+                $zk = $st->fetch(\PDO::FETCH_ASSOC) ?: [];
+                $primaociIds = array_filter(
+                    [(int)($zk['kreirao_id'] ?? 0), (int)($zk['prihvaceno_id'] ?? 0)],
+                    fn($x) => $x && (int)$x !== (int)$uid
+                );
+                if ($primaociIds) {
+                    PushController::notifyUsers($primaociIds, [
+                        'title' => '💬 Komentar na zadatak',
+                        'body'  => 'Komentar na zadatak od ' . Auth::ime() . ': ' . mb_substr($tekst, 0, 50),
+                        'url'   => BASE_URL . '/?page=zadaci&openz=' . $id,
+                        'tag'   => 'zadatak-' . $id,
+                        'icon'  => BASE_URL . '/public/icon-192.png',
+                    ]);
+                }
+                $this->json(['ok' => true, 'komentar' => $kom]);
                 break;
 
             case 'zadatak_edit':

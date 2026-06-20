@@ -213,12 +213,14 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             style="background:none;border:none;cursor:pointer;font-size:12px;color:var(--blue);font-weight:600;padding:0;display:flex;align-items:center;gap:6px;"
             id="zbtn-kom-<?= $z['id'] ?>">
             <span id="zikona-<?= $z['id'] ?>">▶</span>
-            <?php if ($z['komentar_count'] > 0): ?>
-                💬 <?= $z['komentar_count'] ?> <?= $z['komentar_count']===1?'poruka':($z['komentar_count']<5?'poruke':'poruka') ?>
-                <?php if (mb_strlen($tekst_pun) > 100): ?> · prikaži ceo tekst<?php endif; ?>
-            <?php else: ?>
-                <?php if (mb_strlen($tekst_pun) > 100): ?>prikaži ceo tekst<?php else: ?>💬 Dodaj komentar<?php endif; ?>
-            <?php endif; ?>
+            <span id="zkom-count-<?= $z['id'] ?>" data-n="<?= (int)$z['komentar_count'] ?>"><?php
+                if ($z['komentar_count'] > 0) {
+                    echo '💬 ' . (int)$z['komentar_count'] . ' ' . ($z['komentar_count']===1?'poruka':($z['komentar_count']<5?'poruke':'poruka'));
+                } else {
+                    echo '💬 Dodaj komentar';
+                }
+            ?></span>
+            <?php if (mb_strlen($tekst_pun) > 100): ?><span style="color:var(--muted);"> · prikaži ceo tekst</span><?php endif; ?>
         </button>
 
         <!-- Prošireni sadržaj -->
@@ -370,29 +372,15 @@ setInterval(function() {
             if (!d.ok || !d.komentari || !d.komentari.length) return;
             var lista = document.getElementById('zkom-lista-'+id);
             if (!lista) return;
-            d.komentari.forEach(function(k) {
-                var moj = k.autor_id == _zUid;
-                var div = document.createElement('div');
-                div.style.cssText = 'display:flex;flex-direction:column;align-items:'+(moj?'flex-end':'flex-start')+';';
-                var ts = k.created_at.substring(5,16).replace('T',' ').replace('-','.');
-                div.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;'+(moj?'text-align:right;':'')+'">'+(moj?'':'<strong>'+escH(k.autor_ime)+'</strong> · ')+ts+'</div>'+
-                    '<div style="max-width:85%;background:'+(moj?'#1d4ed8':'#f1f5f9')+';color:'+(moj?'#fff':'var(--text)')+';border-radius:'+(moj?'14px 14px 4px 14px':'14px 14px 14px 4px')+';padding:8px 13px;font-size:13px;line-height:1.4;">'+escH(k.tekst)+'</div>';
-                lista.appendChild(div);
-            });
-            // Ažuriraj last_ts
+            d.komentari.forEach(function(k) { renderKomBubble(lista, k); });
+            // Ažuriraj poll-kursor
             _zOtvoreni[id] = d.komentari[d.komentari.length-1].created_at;
-            // Ažuriraj badge
             var wrap = document.getElementById('zkom-wrap-'+id);
             if (wrap) wrap.dataset.lastTs = _zOtvoreni[id];
+            // Ažuriraj brojač poruka (na namenskom span-u, ne na strelici)
+            bumpKomCount(id, d.komentari.length);
             var btn = document.getElementById('zbtn-kom-'+id);
-            if (btn) {
-                var sp = btn.querySelector('span');
-                var cur = sp ? parseInt(sp.textContent||'0') : 0;
-                var nova = d.komentari.length;
-                if (sp) sp.textContent = cur + nova;
-                else btn.innerHTML += ' <span>'+ nova +'</span>';
-                btn.style.background='#eff6ff'; btn.style.color='#1d4ed8'; btn.style.borderColor='#bfdbfe';
-            }
+            if (btn) { btn.style.background='#eff6ff'; btn.style.color='#1d4ed8'; btn.style.borderColor='#bfdbfe'; }
             lista.lastChild.scrollIntoView({behavior:'smooth',block:'nearest'});
         }).catch(function(){});
     });
@@ -400,6 +388,41 @@ setInterval(function() {
 
 function escH(str) {
     return String(str||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// "YYYY-MM-DD HH:MM:SS" (server) -> "DD.MM HH:MM"
+function formatKomTs(s) {
+    var m = String(s||'').match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    return m ? (m[3]+'.'+m[2]+' '+m[4]+':'+m[5]) : '';
+}
+function pluralPoruka(n) { return n===1?'poruka':(n<5?'poruke':'poruka'); }
+
+// Jedinstven render mehurića (koriste ga i polling i ručno slanje) — pošiljalac desno, primalac levo
+function renderKomBubble(lista, k) {
+    var moj = (k.autor_id == _zUid);
+    var ts  = formatKomTs(k.created_at);
+    var div = document.createElement('div');
+    div.style.cssText = 'display:flex;flex-direction:column;align-items:'+(moj?'flex-end':'flex-start')+';';
+    div.innerHTML =
+        '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;'+(moj?'text-align:right;':'')+'">'+
+        (moj?'':'<strong>'+escH(k.autor_ime)+'</strong> · ')+ts+'</div>'+
+        '<div style="max-width:85%;background:'+(moj?'#1d4ed8':'#f1f5f9')+';color:'+(moj?'#fff':'var(--text)')+
+        ';border-radius:'+(moj?'14px 14px 4px 14px':'14px 14px 14px 4px')+';padding:8px 13px;font-size:13px;line-height:1.4;">'+
+        escH(k.tekst)+'</div>';
+    lista.appendChild(div);
+    return div;
+}
+// Brojač poruka na dugmetu — uvek na #zkom-count-<id>, nikad na strelici
+function setKomCount(id, n) {
+    var sp = document.getElementById('zkom-count-'+id);
+    if (!sp) return;
+    sp.dataset.n = n;
+    sp.textContent = n>0 ? ('💬 '+n+' '+pluralPoruka(n)) : '💬 Dodaj komentar';
+}
+function bumpKomCount(id, delta) {
+    var sp = document.getElementById('zkom-count-'+id);
+    var cur = sp ? (parseInt(sp.dataset.n||'0',10)||0) : 0;
+    setKomCount(id, cur + delta);
 }
 function setUrlParam(key, val) {
     var url = new URL(window.location.href);
@@ -485,27 +508,18 @@ function posaljiZKomentar(input) {
     var id = input.dataset.id;
     post({ _action:'zadatak_komentar', id:id, tekst:tekst }).then(function(d) {
         if (!d.ok) { alert(d.err||'Greška.'); return; }
-        var lista = document.getElementById('zkom-lista-'+id);
-        var sada  = new Date();
-        var v = sada.getDate()+'.'+(sada.getMonth()+1)+' '+
-                String(sada.getHours()).padStart(2,'0')+':'+String(sada.getMinutes()).padStart(2,'0');
-        var div = document.createElement('div');
-        div.style.cssText = 'display:flex;flex-direction:column;align-items:flex-end;';
-        div.innerHTML = '<div style="font-size:11px;color:var(--muted);margin-bottom:2px;text-align:right;">'+v+'</div>'+
-            '<div style="max-width:90%;background:#1d4ed8;color:#fff;border-radius:14px 14px 4px 14px;padding:6px 11px;font-size:13px;line-height:1.4;">'+
-            tekst.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')+'</div>';
-        lista.appendChild(div);
         input.value = '';
+        var lista = document.getElementById('zkom-lista-'+id);
+        // Koristi komentar koji je server vratio (sa tačnim created_at i autorom)
+        var k = d.komentar || { autor_id:_zUid, autor_ime:'', tekst:tekst, created_at:'' };
+        var div = renderKomBubble(lista, k);
         div.scrollIntoView({behavior:'smooth',block:'nearest'});
-        var btn = document.getElementById('zbtn-kom-'+id);
-        if (btn) {
-            var sp = btn.querySelector('span:not(#zikona-'+id+')');
-            // Ažuriraj tekst dugmeta
-            var ikona = document.getElementById('zikona-'+id);
-            var ikonaHtml = ikona ? ikona.outerHTML : '▼';
-            var cur = btn.textContent.match(/\d+/);
-            var nova_br = (cur ? parseInt(cur[0]) : 0) + 1;
-            btn.innerHTML = ikonaHtml + ' 💬 ' + nova_br + ' ' + (nova_br===1?'poruka':(nova_br<5?'poruke':'poruka'));
+        bumpKomCount(id, 1);
+        // Pomeri poll-kursor na ovaj komentar da ga polling NE bi dodao po drugi put
+        if (k.created_at) {
+            _zOtvoreni[id] = k.created_at;
+            var wrap = document.getElementById('zkom-wrap-'+id);
+            if (wrap) wrap.dataset.lastTs = k.created_at;
         }
     });
 }
@@ -620,4 +634,20 @@ function resetMicBtn(btn, origStyle) {
     btn.textContent = '🎤';
     btn.style.cssText = origStyle;
 }
+
+// ── Otvori konkretan zadatak iz notifikacije (?openz=<id>) ──
+(function() {
+    var openz = new URLSearchParams(window.location.search).get('openz');
+    if (!openz) return;
+    var card = document.getElementById('zcard-'+openz);
+    if (!card) return; // zadatak nije na ovoj strani/filteru
+    var wrap = document.getElementById('zkom-wrap-'+openz);
+    if (wrap && wrap.style.display === 'none') toggleZKom(openz); // proširi tekst + komentare
+    setTimeout(function() {
+        card.scrollIntoView({behavior:'smooth', block:'center'});
+        card.style.transition = 'box-shadow .3s';
+        card.style.boxShadow = '0 0 0 3px #93c5fd';
+        setTimeout(function(){ card.style.boxShadow = ''; }, 2500);
+    }, 300);
+})();
 </script>
