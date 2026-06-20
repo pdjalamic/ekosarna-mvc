@@ -4,7 +4,7 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ⏳ napravljeno; čeka SQL + test na produkciji
+1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ✅ test prošao na produkciji; komitovano
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
@@ -13,7 +13,7 @@
 
 ## 1. Magacin — „Namenjeno za" (gradilište) + pregled loga
 
-**Datum:** 2026-06-20 · **Status:** ⏳ kod napravljen (Faze 1–4), NIJE komitovano, čeka pokretanje SQL-a i test na produkciji.
+**Datum:** 2026-06-20 · **Status:** ✅ test prošao na produkciji; SQL pokrenut, kod komitovan i pušovan.
 
 ### Cilj
 Objediniti na jednom mestu: **gde roba fizički jeste** (`lokacija`) i **za koje gradilište je namenjena** (`namenjeno_gradiliste_id`, nezavisno polje — sa otpremnice). Plus pregled audit loga.
