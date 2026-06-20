@@ -53,7 +53,9 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
   .mag-primke > tbody > tr > td:nth-child(6)::before { content:"Stavki"; }
   .mag-primke > tbody > tr > td:nth-child(7)::before { display:none; }
   /* Detalj red (proširenje primke) — bez labela, nested tabela puna širina */
-  .mag-primke > tbody > tr[id^="primka-detalj-"] > td { padding:0 !important; }
+  .mag-primke > tbody > tr[id^="primka-detalj-"] { display:block; } /* inline display:none ga drži skrivenim dok se ne otvori */
+  /* display:block na ćeliji — inače je `td:first-child{display:none}` (redni broj) sakrije, jer detalj ima samo jedan colspan td */
+  .mag-primke > tbody > tr[id^="primka-detalj-"] > td { display:block !important; padding:0 !important; }
   .mag-primke > tbody > tr[id^="primka-detalj-"] > td::before { display:none; }
   .mag-primke > tbody > tr[id^="primka-detalj-"] table { min-width:0 !important; width:100%; font-size:11px; }
 }
@@ -165,11 +167,14 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
             </td>
             <td style="text-align:center;font-size:12px;color:var(--muted);"><?= count($pr['stavke']) ?></td>
             <td style="text-align:right;white-space:nowrap;">
-                <?php if ($pr['pdf_putanja']): ?>
-                <a href="<?= BASE_URL ?>/uploads/magacin/<?= h($pr['pdf_putanja']) ?>" target="_blank"
-                   class="btn-sm" title="Prikaži dokument"
-                   onclick="event.stopPropagation()"
-                   style="margin-right:6px;">📄</a>
+                <?php if ($pr['pdf_putanja']):
+                    $docUrl = BASE_URL . '/uploads/magacin/' . $pr['pdf_putanja'];
+                    $docExt = strtolower(pathinfo($pr['pdf_putanja'], PATHINFO_EXTENSION));
+                    $docTip = in_array($docExt, ['jpg','jpeg','png','gif','webp','bmp']) ? 'img' : 'pdf';
+                ?>
+                <button type="button" class="btn-sm" title="Prikaži dokument"
+                   onclick="event.stopPropagation();openModal('<?= h($docUrl) ?>','<?= $docTip ?>')"
+                   style="margin-right:6px;">📄</button>
                 <?php endif; ?>
                 <button class="btn-sm del" title="Obriši"
                     onclick="event.stopPropagation();obrisiPrimku(<?= $pr['id'] ?>)"
@@ -781,7 +786,9 @@ function togglePrimka(i) {
     var detalj = document.getElementById('primka-detalj-' + i);
     var arrow  = document.getElementById('arrow-pr-' + i);
     var open   = detalj.style.display !== 'none';
-    detalj.style.display = open ? 'none' : 'table-row';
+    // '' (a ne 'table-row') — na mobilnom je tabela CSS-om pretvorena u kartice,
+    // pa red sa stavkama prikazuje media-query (display:block); na desktopu ostaje table-row.
+    detalj.style.display = open ? 'none' : '';
     arrow.textContent    = open ? '▼' : '▲';
 }
 

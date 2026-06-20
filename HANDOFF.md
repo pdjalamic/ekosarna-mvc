@@ -4,12 +4,24 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-1. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#1-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
-2. [Push notifikacije — stanje](#2-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+1. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#1-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
+2. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#2-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
+3. [Push notifikacije — stanje](#3-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
 
 ---
 
-## 1. Zadaci — notifikacije + chat komentari
+## 1. Magacin — mobilni: otvaranje stavki + dokument u modalu
+
+**Datum:** 2026-06-20 · **Status:** ✅ potvrđeno na web-u i telefonu; komitovano. Sve u `app/Views/magacin/index.php`.
+
+Tab „Ulaz robe" (`?page=magacin&tab=primke`) je jedna `<table class="rs-tabela mag-card mag-primke">` koju `@media (max-width:720px)` pretvara u kartice.
+
+1. **Klik na dobavljača nije otvarao stavke na mobilnom.** `togglePrimka()` je red sa stavkama postavljao na `display:table-row`, što se ne renderuje u „card" (block) layoutu. Lek: JS sada postavlja `''` (pusti CSS), + media-query daje detalj redu `display:block`. **Glavna zamka:** pravilo `.mag-card > tbody > tr > td:first-child { display:none }` (skriva redni broj) je sakrivalo i jedinu `colspan` ćeliju detalj-reda → dodato `display:block !important` na tu ćeliju.
+2. **Prikaz dokumenta.** Pre: `<a target="_blank">` (na mobilnom otvori preko celog ekrana bez „zatvori", back izbaci iz app-a). Sada: dugme zove **deljeni modal** `openModal(url, type)` (modal `#fajl-modal` je u `layout/footer.php`, JS u `public/js/app.js`) — X gore desno + „⬇ Preuzmi", isto na web-u i mobilnom. Tip se bira po ekstenziji (jpg/png… → `img`, ostalo → `pdf`). Vidi [[deljeni-fajl-modal]].
+
+---
+
+## 2. Zadaci — notifikacije + chat komentari
 
 **Datum:** 2026-06-20 · **Status:** ✅ klik notifikacije i kontrola roka POTVRĐENI na uređaju; komitovano.
 
@@ -73,7 +85,7 @@ Sve iz `app/Views/zadaci/index.php`:
 
 ---
 
-## 2. Push notifikacije — stanje
+## 3. Push notifikacije — stanje
 
 **Datum:** 2026-06-16 · **Status:** ✅ Push RADI na produkciji (potvrđeno na iPhone). Ostalo poliranje + odluka web vs native.
 
