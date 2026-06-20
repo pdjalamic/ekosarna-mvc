@@ -1,5 +1,5 @@
 // Ekošarna Service Worker — Push Notifikacije
-const CACHE_NAME = 'ekosarna-v3';
+const CACHE_NAME = 'ekosarna-v7';
 
 // Instalacija
 self.addEventListener('install', function(e) {
@@ -7,6 +7,7 @@ self.addEventListener('install', function(e) {
 });
 
 self.addEventListener('activate', function(e) {
+  console.log('[SW] Aktivan:', CACHE_NAME);
   e.waitUntil(clients.claim());
 });
 
@@ -38,11 +39,10 @@ self.addEventListener('push', function(e) {
     renotify: true,
     data:    { url: url },
     vibrate: [200, 100, 200],
-    requireInteraction: true,
-    actions: [
-      { action: 'open',   title: 'Otvori zadatak' },
-      { action: 'close',  title: 'Zatvori' }
-    ]
+    // requireInteraction:false + bez action-dugmića → cela notifikacija je jedan
+    // klik-cilj (telo), što je na Androidu najpouzdanije za otvaranje app-a,
+    // i lakše iskoči kao baner (heads-up).
+    requireInteraction: false
   };
 
   e.waitUntil(
@@ -56,38 +56,35 @@ self.addEventListener('notificationclick', function(e) {
 
   if (e.action === 'close') return;
 
-  var url = (e.notification.data && e.notification.data.url)
+  var raw = (e.notification.data && e.notification.data.url)
     ? e.notification.data.url
     : '/mvc/?page=zadaci';
+
+  // Ignoriši šemu/host koje je server upisao (može biti http:// iza proksija) i
+  // uvek otvori na trenutnom https originu — uzmi samo putanju + query.
+  var url = raw;
+  try { var u = new URL(raw, self.location.origin); url = u.pathname + u.search + u.hash; } catch (err) {}
 
   e.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then(function(clientList) {
-        // Ako je prozor/tab već otvoren — fokusiraj ga i pošalji mu URL preko
-        // postMessage da sama stranica izvrši navigaciju. Ovo je pouzdano i na
-        // Androidu, gde client.navigate() često tiho zakaže na PWA prozoru.
+        // Ako je prozor/tab već otvoren — pošalji mu URL preko postMessage PRE
+        // fokusa (ako focus() na Androidu tiho zakaže, navigacija je već poslata),
+        // pa fokusiraj. Ako i fokus padne — otvori novi prozor kao rezervu.
         for (var i = 0; i < clientList.length; i++) {
           var client = clientList[i];
-          if (client.url.indexOf('/mvc/') !== -1 && 'focus' in client) {
-            return client.focus().then(function(c) {
-              if (c && c.postMessage) {
-                c.postMessage({ type: 'navigate', url: url });
-                return c;
-              }
-              // Rezerva: probaj navigate(), pa otvori novi prozor
-              if (c && c.navigate) {
-                return c.navigate(url).catch(function() {
-                  return clients.openWindow ? clients.openWindow(url) : null;
-                });
-              }
-              return clients.openWindow ? clients.openWindow(url) : null;
-            });
+          if (client.url.indexOf('/mvc/') !== -1) {
+            try { client.postMessage({ type: 'navigate', url: url }); } catch (err) {}
+            if ('focus' in client) {
+              return client.focus().catch(function() {
+                return clients.openWindow ? clients.openWindow(url) : null;
+              });
+            }
+            return client;
           }
         }
-        // Nijedan prozor nije otvoren — otvori novi
-        if (clients.openWindow) {
-          return clients.openWindow(url);
-        }
+        // Nijedan prozor nije otvoren — otvori novi (svež start pročita ?openz=)
+        return clients.openWindow ? clients.openWindow(url) : null;
       })
   );
 });

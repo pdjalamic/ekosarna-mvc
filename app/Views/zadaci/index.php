@@ -294,7 +294,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             <datalist id="kat-list">
                 <?php foreach ($kategorije as $k): ?><option value="<?= h($k) ?>"><?php endforeach; ?>
             </datalist>
-            <input type="date" id="z-rok"
+            <input type="date" id="z-rok" min="<?= $today ?>"
                 style="flex:1;min-width:140px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
             <select id="z-dodeljeno"
                 style="flex:1;min-width:160px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
@@ -330,7 +330,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             <datalist id="kat-list-edit">
                 <?php foreach ($kategorije as $k): ?><option value="<?= h($k) ?>"><?php endforeach; ?>
             </datalist>
-            <input type="date" id="z-edit-rok"
+            <input type="date" id="z-edit-rok" min="<?= $today ?>"
                 style="flex:1;min-width:120px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;">
@@ -450,10 +450,15 @@ function dodajZadatak() {
     err.style.display = 'none';
     if (!tekst) { err.textContent='Upiši tekst.'; err.style.display='block'; return; }
     if (!dodeljeno) { err.textContent='Izaberi kome dodeljuješ zadatak.'; err.style.display='block'; return; }
+    var rok = document.getElementById('z-rok').value;
+    if (rok && rok < '<?= $today ?>') {
+        err.textContent='Rok izvršenja ne može biti raniji od današnjeg datuma. Izaberite današnji ili neki budući datum.';
+        err.style.display='block'; return;
+    }
     post({
         _action:'zadatak_add', tekst:tekst,
         kategorija: document.getElementById('z-kat').value.trim(),
-        rok: document.getElementById('z-rok').value,
+        rok: rok,
         dodeljeno_id: dodeljeno,
     }).then(function(d) {
         if (d.ok) location.reload();
@@ -530,6 +535,7 @@ function otvoriEditZadatak(id,tekst,kat,status,rok,dodeId) {
     document.getElementById('z-edit-kat').value       = kat;
     document.getElementById('z-edit-status').value    = status;
     document.getElementById('z-edit-rok').value       = rok;
+    window._zEditRokOrig = rok || '';
     document.getElementById('z-edit-dodeljeno').value = dodeId||'';
     document.getElementById('z-edit-err').style.display = 'none';
     document.getElementById('z-edit-modal').style.display = 'flex';
@@ -541,11 +547,16 @@ function sacuvajZadatak() {
     var err   = document.getElementById('z-edit-err');
     err.style.display = 'none';
     if (!tekst) { err.textContent='Tekst je obavezan.'; err.style.display='block'; return; }
+    var rok = document.getElementById('z-edit-rok').value;
+    if (rok && rok < '<?= $today ?>' && rok !== (window._zEditRokOrig || '')) {
+        err.textContent='Rok izvršenja ne može biti raniji od današnjeg datuma. Izaberite današnji ili neki budući datum.';
+        err.style.display='block'; return;
+    }
     post({
         _action:'zadatak_edit', id:id, tekst:tekst,
         kategorija: document.getElementById('z-edit-kat').value.trim(),
         status: document.getElementById('z-edit-status').value,
-        rok: document.getElementById('z-edit-rok').value,
+        rok: rok,
         dodeljeno_id: document.getElementById('z-edit-dodeljeno').value,
     }).then(function(d) {
         if (d.ok) { document.getElementById('z-edit-modal').style.display='none'; location.reload(); }

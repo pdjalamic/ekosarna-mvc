@@ -4,14 +4,30 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-1. [Zadaci — notifikacije + chat komentari](#1-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ⏳ nekomitovano, netestirano
+1. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#1-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 2. [Push notifikacije — stanje](#2-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
 
 ---
 
 ## 1. Zadaci — notifikacije + chat komentari
 
-**Datum:** 2026-06-20 · **Status:** ⏳ izmene NAPRAVLJENE, NISU komitovane, NISU potvrđene testom.
+**Datum:** 2026-06-20 · **Status:** ✅ klik notifikacije i kontrola roka POTVRĐENI na uređaju; komitovano.
+
+### Update 2026-06-20 (kasnije) — klik notifikacije REŠEN + kontrola roka
+
+**Klik na notifikaciju (mobilni) — uzrok i lek.** Klik ranije „ništa nije radio" / „ekran blinke pa ništa". Dva uzroka, oba rešena u `sw.js`:
+1. **`url` je bio `http://`** (BASE_URL na hostingu iza proksija pogrešno detektuje šemu) → PWA na `https` ne otvara `http` adresu. Lek: u `notificationclick` se URL **normalizuje na trenutni origin** (`new URL(raw, self.location.origin)` → uzmi samo `pathname+search+hash`).
+2. **Action-dugmići** („Otvori zadatak"/„Zatvori") — otvaranje prozora preko action-dugmeta je na Androidu nepouzdano (blink pa ništa). Lek: **uklonjeni `actions`**, cela notifikacija je jedan klik-cilj (telo). Dodato i `requireInteraction:false` (lakši heads-up).
+- `CACHE_NAME` = `ekosarna-v7`. `activate` loguje `[SW] Aktivan: <verzija>`. (Usput korišćen debug build v6 sa verzijom u naslovu da se golim okom potvrdi koja je verzija aktivna na telefonu — uklonjeno.)
+- Dijagnostika ubuduće: ako klik opet zataji, prvo proveri da naslov/`activate` log pokazuje očekivanu verziju (znači da je nov SW zaista aktivan), pa tek onda diraj logiku.
+
+**Heads-up baner („samo zvuk + slovo E gore"):** slovo „E" u statusnoj traci je normalna Android mono-ikonica (ne može „već otvoreno"). Da notifikacija iskoči kao baner = Android **importance HIGH** za kanal te (PWA) aplikacije — podešava **korisnik** u Android: Podešavanja → Aplikacije → Ekošarna → Obaveštenja → „Iskači na ekran". Web push nema pouzdan API da to natera iz koda.
+
+**Kontrola roka (`app/Views/zadaci/index.php`):** rok izvršenja ne može pre današnjeg dana. `min="<?= $today ?>"` na `#z-rok` i `#z-edit-rok` + JS provera u `dodajZadatak()` i `sacuvajZadatak()`. Kod izmene blokira samo ako se rok **promeni** na prošlost (zakasneli zadatak sa već prošlim rokom se i dalje čuva — poredi se sa `window._zEditRokOrig`). Poruka: „Rok izvršenja ne može biti raniji od današnjeg datuma. Izaberite današnji ili neki budući datum."
+
+> **Deploy podsetnik:** posle commita ipak treba ručno uploadovati `sw.js` (v7) i `app/Views/zadaci/index.php` na cPanel — git push NE deplojuje. `sw.js` se na telefonu osvežava zatvaranjem/otvaranjem PWA (ili reinstalacijom).
+
+### Originalni opis (prva tura istog dana)
 
 ### Cilj (šta je traženo)
 1. Klik na notifikaciju otvara konkretan zadatak **proširen** (ceo tekst + komentari). Na mobilnom klik ranije nije radio ništa.
