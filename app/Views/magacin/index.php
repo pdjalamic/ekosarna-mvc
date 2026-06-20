@@ -4,7 +4,9 @@ $tabs = [
     'primke'  => '📋 Ulaz robe',
     'nova'    => '➕ Novi ulaz',
 ];
+if (!empty($jeAdmin)) $tabs['log'] = '🕘 Istorija';
 $aktivan_tab = $_GET['tab'] ?? 'stanje';
+if ($aktivan_tab === 'log' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // log vide samo Direktor/AT/AF
 ?>
 
 <style>
@@ -59,6 +61,12 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
   .mag-primke > tbody > tr[id^="primka-detalj-"] > td::before { display:none; }
   .mag-primke > tbody > tr[id^="primka-detalj-"] table { min-width:0 !important; width:100%; font-size:11px; }
 }
+
+/* "Namenjeno za" — vizuelno izdvojeno (toplo narandžasto), da se razlikuje od lokacije */
+.mag-namenjeno { background:#fff7ed !important; border:1.5px solid #fb923c !important; color:#7c2d12; }
+.mag-namenjeno-wrap { background:#fff7ed; border:1.5px dashed #fb923c; border-radius:8px; padding:8px 10px; }
+.mag-namenjeno-wrap label { color:#c2410c !important; }
+.st-namenjeno-chip { display:inline-block; background:#fff7ed; border:1px solid #fdba74; color:#c2410c; border-radius:5px; font-size:11px; padding:1px 7px; white-space:nowrap; }
 </style>
 
 <div class="topbar-admin">
@@ -119,9 +127,11 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                  data-jm="<?= htmlspecialchars($s['jm'], ENT_QUOTES) ?>"
                  data-lokacija="<?= htmlspecialchars($lok, ENT_QUOTES) ?>"
                  data-gradiliste="<?= (int)$s['gradiliste_id'] ?>"
+                 data-namenjeno="<?= (int)($s['namenjeno_gradiliste_id'] ?? 0) ?>"
+                 data-namenjeno-naziv="<?= htmlspecialchars($s['namenjeno_naziv'] ?? '', ENT_QUOTES) ?>"
                  data-katalog="<?= (int)$s['katalog_id'] ?>"
                  data-stanje="<?= $s['stanje'] ?>">
-                <span class="st-ime"><?= h($s['naziv']) ?></span>
+                <span class="st-ime"><?= h($s['naziv']) ?><?php if (!empty($s['namenjeno_naziv'])): ?> <span class="st-namenjeno-chip">🎯 <?= h($s['namenjeno_naziv']) ?></span><?php endif; ?></span>
                 <span class="st-jm"><?= h($s['jm']) ?></span>
                 <span class="st-kol" style="color:<?= $s['stanje'] >= 0 ? '#059669' : '#dc2626' ?>;"><?= number_format($s['stanje'], 2, ',', '.') ?></span>
                 <span class="st-akc">
@@ -193,6 +203,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                                 <th style="text-align:center;padding:4px 8px;width:90px;">Količina</th>
                                 <th style="text-align:center;padding:4px 8px;width:50px;">JM</th>
                                 <th style="text-align:left;padding:4px 8px;width:100px;">Lokacija</th>
+                                <th style="text-align:left;padding:4px 8px;width:100px;color:#c2410c;">Namenjeno za</th>
                                 <th style="padding:4px 8px;width:36px;"></th>
                             </tr>
                         </thead>
@@ -204,6 +215,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                             <td style="text-align:center;padding:6px 8px;font-weight:600;"><?= number_format($s['kolicina'], 2, ',', '.') ?></td>
                             <td style="text-align:center;padding:6px 8px;color:var(--muted);"><?= h($s['jm']) ?></td>
                             <td style="padding:6px 8px;"><span style="background:#fff;border:1px solid var(--light2);border-radius:4px;padding:1px 7px;"><?= h($lokCur) ?></span></td>
+                            <td style="padding:6px 8px;"><?php if (!empty($s['namenjeno_naziv'])): ?><span class="st-namenjeno-chip">🎯 <?= h($s['namenjeno_naziv']) ?></span><?php else: ?><span style="color:var(--muted);">—</span><?php endif; ?></td>
                             <td style="text-align:right;padding:6px 8px;">
                                 <button class="btn-sm" title="Izmeni stavku"
                                     data-id="<?= (int)$s['id'] ?>"
@@ -212,6 +224,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                                     data-jm="<?= htmlspecialchars($s['jm'], ENT_QUOTES) ?>"
                                     data-lokacija="<?= htmlspecialchars($lokCur, ENT_QUOTES) ?>"
                                     data-gradiliste="<?= (int)($s['gradiliste_cur'] ?? 0) ?>"
+                                    data-namenjeno="<?= (int)($s['namenjeno_cur'] ?? 0) ?>"
                                     onclick="event.stopPropagation();openUrediStavku(this)">✎</button>
                             </td>
                         </tr>
@@ -281,11 +294,22 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
                 </select>
                 <div style="font-size:11px;color:var(--muted);margin-top:4px;">Promena ovde postavlja lokaciju na svim stavkama ispod.</div>
             </div>
+            <div class="tim-form-group mag-namenjeno-wrap" style="margin-bottom:16px;">
+                <label>🎯 Podrazumevano: Namenjeno za (gradilište)</label>
+                <select id="prev-namenjeno" onchange="podrazumevanaNamenjenoChange()" class="mag-namenjeno"
+                    style="border-radius:7px;padding:7px 10px;font-size:13px;outline:none;width:280px;max-width:100%;box-sizing:border-box;">
+                    <option value="">— Bez gradilišta —</option>
+                    <?php foreach ($gradilista as $g): ?>
+                    <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+                <div style="font-size:11px;color:#c2410c;margin-top:4px;">Za koje gradilište je roba namenjena (sa otpremnice). Postavlja vrednost na svim stavkama; možeš promeniti po stavci.</div>
+            </div>
             <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px;">
                 Stavke (<span id="prev-stavke-count">0</span>)
             </div>
-            <div style="display:grid;grid-template-columns:24px 1fr 70px 48px 130px 30px;gap:6px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">
-                <span>#</span><span>Naziv</span><span style="text-align:center;">Količina</span><span style="text-align:center;">JM</span><span>Lokacija</span><span></span>
+            <div style="display:grid;grid-template-columns:24px 1fr 70px 48px 120px 120px 30px;gap:6px;padding:4px 8px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);">
+                <span>#</span><span>Naziv</span><span style="text-align:center;">Količina</span><span style="text-align:center;">JM</span><span>Lokacija</span><span style="color:#c2410c;">Namenjeno za</span><span></span>
             </div>
             <div id="prev-stavke-lista" style="display:flex;flex-direction:column;gap:5px;margin-bottom:16px;max-height:360px;overflow-y:auto;"></div>
             <div id="mag-err" style="display:none;color:#dc2626;font-size:12px;background:#fef2f2;border-radius:6px;padding:8px 12px;margin-bottom:10px;"></div>
@@ -296,6 +320,44 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         </div>
     </div>
 </div>
+
+<?php elseif ($aktivan_tab === 'log' && !empty($jeAdmin)): ?>
+<?php
+    $tipLabela  = ['primka'=>'Ulaz robe','stavka'=>'Stavka ulaza','stanje'=>'Stanje','prenos'=>'Prenos','lokacija'=>'Lokacija'];
+    $akcijaBoja = ['kreiranje'=>['#dcfce7','#166534'],'izmena'=>['#fef3c7','#92400e'],'brisanje'=>['#fee2e2','#b91c1c'],'prenos'=>['#dbeafe','#1e40af'],'premesti'=>['#ede9fe','#6b21a8']];
+    $fmtSnap = function ($json) {
+        if ($json === null || $json === '') return '<span style="color:var(--muted);">—</span>';
+        $d = json_decode($json, true);
+        if (!is_array($d)) return h((string)$json);
+        $parts = [];
+        foreach ($d as $k => $v) {
+            if ($v === null || $v === '') continue;
+            if (is_bool($v)) $v = $v ? 'da' : 'ne';
+            $parts[] = '<span style="color:var(--muted);">' . h($k) . ':</span> ' . h((string)$v);
+        }
+        return $parts ? implode('<br>', $parts) : '<span style="color:var(--muted);">—</span>';
+    };
+?>
+<div style="margin-bottom:10px;font-size:12px;color:var(--muted);">Poslednjih <?= count($log) ?> izmena u magacinu (najnovije gore). Vide samo Direktor, AT i AF.</div>
+<?php if (empty($log)): ?>
+    <div style="padding:40px;text-align:center;color:var(--muted);">Log je prazan.</div>
+<?php else: ?>
+<div>
+<?php foreach ($log as $l): $boja = $akcijaBoja[$l['akcija']] ?? ['#f1f5f9','#475569']; ?>
+    <div style="background:#fff;border:1px solid var(--light2);border-radius:10px;padding:12px 14px;margin-bottom:10px;">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
+            <span style="background:<?= $boja[0] ?>;color:<?= $boja[1] ?>;font-size:11px;font-weight:700;padding:2px 9px;border-radius:5px;text-transform:uppercase;"><?= h($l['akcija']) ?></span>
+            <span style="font-size:13px;font-weight:600;"><?= h($tipLabela[$l['tip']] ?? $l['tip']) ?></span>
+            <span style="margin-left:auto;font-size:11px;color:var(--muted);"><?= h($l['korisnik_ime'] ?? '—') ?> · <?= h(date('d.m.Y. H:i', strtotime($l['created_at']))) ?></span>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;line-height:1.5;">
+            <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px;">Pre</div><?= $fmtSnap($l['staro_stanje']) ?></div>
+            <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#c2410c;margin-bottom:2px;">Posle</div><?= $fmtSnap($l['novo_stanje']) ?></div>
+        </div>
+    </div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
 
 <?php endif; ?>
 
@@ -332,7 +394,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <button onclick="document.getElementById('prenos-modal').style.display='none'" style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
         <h3 id="prenos-naslov" style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:16px;padding-right:32px;">↔ Prenos robe</h3>
         <input type="hidden" id="prenos-naziv"><input type="hidden" id="prenos-jm">
-        <input type="hidden" id="prenos-katalog"><input type="hidden" id="prenos-lok-iz"><input type="hidden" id="prenos-gid-iz">
+        <input type="hidden" id="prenos-katalog"><input type="hidden" id="prenos-lok-iz"><input type="hidden" id="prenos-gid-iz"><input type="hidden" id="prenos-namenjeno-iz">
         <div class="tim-form-group"><label>Sa lokacije</label>
             <input type="text" id="prenos-lok-iz-disp" disabled style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;background:#f1f5f9;color:#475569;width:100%;box-sizing:border-box;"></div>
         <div class="tim-form-group"><label>Količina <span id="prenos-max" style="color:var(--muted);font-size:11px;"></span></label>
@@ -340,6 +402,13 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <div class="tim-form-group"><label>Na lokaciju</label>
             <select id="prenos-lok-do" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
                 <option value="magacin">Magacin</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
+        <div class="tim-form-group mag-namenjeno-wrap"><label>🎯 Namenjeno za (gradilište)</label>
+            <select id="prenos-namenjeno" class="mag-namenjeno" style="border-radius:7px;padding:7px 10px;font-size:13px;outline:none;width:100%;box-sizing:border-box;">
+                <option value="">— Bez gradilišta —</option>
                 <?php foreach ($gradilista as $g): ?>
                 <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
                 <?php endforeach; ?>
@@ -385,7 +454,7 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <h3 style="font-size:15px;font-weight:700;color:var(--blue);margin-bottom:4px;padding-right:32px;">✎ Izmena stavke</h3>
         <p style="font-size:11px;color:var(--muted);margin:0 0 16px;">Promenu lokacije radi „Prenos". Svaka izmena se beleži u log.</p>
         <input type="hidden" id="izmena-stari-naziv"><input type="hidden" id="izmena-stari-jm">
-        <input type="hidden" id="izmena-lokacija"><input type="hidden" id="izmena-gid"><input type="hidden" id="izmena-katalog">
+        <input type="hidden" id="izmena-lokacija"><input type="hidden" id="izmena-gid"><input type="hidden" id="izmena-katalog"><input type="hidden" id="izmena-namenjeno-staro">
         <div class="tim-form-group"><label>Lokacija</label>
             <input type="text" id="izmena-lok-disp" disabled style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;background:#f1f5f9;color:#475569;width:100%;box-sizing:border-box;"></div>
         <div class="tim-form-group"><label>Naziv</label>
@@ -394,6 +463,13 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
             <div class="tim-form-group"><label>Količina</label><input type="number" id="izmena-kolicina" step="0.001" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
             <div class="tim-form-group"><label>JM</label><input type="text" id="izmena-jm" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;box-sizing:border-box;"></div>
         </div>
+        <div class="tim-form-group mag-namenjeno-wrap"><label>🎯 Namenjeno za (gradilište)</label>
+            <select id="izmena-namenjeno" class="mag-namenjeno" style="border-radius:7px;padding:7px 10px;font-size:13px;outline:none;width:100%;box-sizing:border-box;">
+                <option value="">— Bez gradilišta —</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
         <div id="izmena-err" style="display:none;color:#dc2626;font-size:12px;margin-bottom:8px;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
             <button onclick="document.getElementById('izmena-modal').style.display='none'" class="mail-cancel-btn">Odustani</button>
@@ -418,6 +494,13 @@ $aktivan_tab = $_GET['tab'] ?? 'stanje';
         <div class="tim-form-group"><label>Lokacija</label>
             <select id="us-lokacija" style="border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);width:100%;">
                 <option value="magacin">Magacin</option>
+                <?php foreach ($gradilista as $g): ?>
+                <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
+                <?php endforeach; ?>
+            </select></div>
+        <div class="tim-form-group mag-namenjeno-wrap"><label>🎯 Namenjeno za (gradilište)</label>
+            <select id="us-namenjeno" class="mag-namenjeno" style="border-radius:7px;padding:7px 10px;font-size:13px;outline:none;width:100%;box-sizing:border-box;">
+                <option value="">— Bez gradilišta —</option>
                 <?php foreach ($gradilista as $g): ?>
                 <option value="<?= $g['id'] ?>"><?= h($g['naziv']) ?></option>
                 <?php endforeach; ?>
@@ -453,6 +536,21 @@ function lokFromSelect(selEl) {
     if (v === 'magacin') return { lokacija: 'Magacin', gradiliste_id: 0 };
     var opt = selEl.options[selEl.selectedIndex];
     return { lokacija: opt ? opt.text : 'Magacin', gradiliste_id: parseInt(v) || 0 };
+}
+
+// "Namenjeno za" opcije (gradilišta); prazna vrednost = bez namene
+function namenjenoOptionsHtml(sel) {
+    var h = '<option value=""' + (!sel || String(sel) === '0' ? ' selected' : '') + '>— Bez gradilišta —</option>';
+    MAG_GRADILISTA.forEach(function (g) {
+        h += '<option value="' + g.id + '"' + (String(sel) === String(g.id) ? ' selected' : '') + '>' + esc(g.naziv) + '</option>';
+    });
+    return h;
+}
+
+// Promena podrazumevanog "Namenjeno za" → primeni na sve stavke
+function podrazumevanaNamenjenoChange() {
+    var v = document.getElementById('prev-namenjeno').value;
+    document.querySelectorAll('#prev-stavke-lista .st-namenjeno').forEach(function (s) { s.value = v; });
 }
 
 // Promena podrazumevane lokacije → primeni na sve stavke
@@ -503,15 +601,17 @@ function prikaziPreview(data) {
     var lista = document.getElementById('prev-stavke-lista');
     lista.innerHTML = '';
     var podrazumevana = document.getElementById('prev-lokacija').value || 'magacin';
+    var podrNamenjeno = document.getElementById('prev-namenjeno').value || '';
     (data.stavke || []).forEach(function(s, i) {
         var row = document.createElement('div');
-        row.style.cssText = 'display:grid;grid-template-columns:24px 1fr 70px 48px 130px 30px;gap:6px;align-items:center;background:var(--light);border-radius:7px;padding:6px 8px;';
+        row.style.cssText = 'display:grid;grid-template-columns:24px 1fr 70px 48px 120px 120px 30px;gap:6px;align-items:center;background:var(--light);border-radius:7px;padding:6px 8px;';
         row.innerHTML = `
             <span style="font-size:11px;color:var(--muted);text-align:center;">${i+1}</span>
             <input type="text" value="${esc(s.naziv)}" class="st-naziv" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
             <input type="number" value="${s.kolicina}" class="st-kolicina" min="0" step="0.01" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
             <input type="text" value="${esc(s.jm)}" class="st-jm" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 8px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">
             <select class="st-lokacija" style="border:1.5px solid var(--light2);border-radius:6px;padding:5px 6px;font-size:12px;outline:none;background:#fff;width:100%;box-sizing:border-box;">${lokOptionsHtml(podrazumevana)}</select>
+            <select class="st-namenjeno mag-namenjeno" title="Namenjeno za" style="border-radius:6px;padding:5px 6px;font-size:12px;outline:none;width:100%;box-sizing:border-box;">${namenjenoOptionsHtml(podrNamenjeno)}</select>
             <button onclick="ukloniStavku(this)" style="background:#fee2e2;border:none;border-radius:6px;padding:5px 6px;font-size:13px;cursor:pointer;color:#dc2626;" title="Ukloni">✕</button>
         `;
         lista.appendChild(row);
@@ -600,6 +700,7 @@ function sacuvajKorak2() {
                     jm:            r.jm,
                     lokacija:      sv.lokacija || 'Magacin',
                     gradiliste_id: sv.gradiliste_id || 0,
+                    namenjeno_gradiliste_id: sv.namenjeno_gradiliste_id || 0,
                     master_id:     r.status === 'tacno' ? null : 'novi',
                     rucni_naziv:   ''
                 };
@@ -658,6 +759,7 @@ function prikaziKatalogModal(rezultati) {
         div.dataset.jm          = r.jm;
         div.dataset.lokacija    = sv.lokacija || 'Magacin';
         div.dataset.gradilisteId = sv.gradiliste_id || 0;
+        div.dataset.namenjenoId = sv.namenjeno_gradiliste_id || 0;
         div.dataset.status      = r.status;
         lista.appendChild(div);
     });
@@ -684,6 +786,7 @@ function doSacuvajPrimku() {
             var jm       = div.dataset.jm;
             var lokacija = div.dataset.lokacija;
             var gradiliste_id = parseInt(div.dataset.gradilisteId) || 0;
+            var namenjeno_gradiliste_id = parseInt(div.dataset.namenjenoId) || 0;
 
             var master_id   = null;
             var rucni_naziv = '';
@@ -706,7 +809,7 @@ function doSacuvajPrimku() {
                 master_id = 'novi';
             }
 
-            _katalogOdluke.push({ naziv, kolicina, jm, lokacija, gradiliste_id, master_id, rucni_naziv });
+            _katalogOdluke.push({ naziv, kolicina, jm, lokacija, gradiliste_id, namenjeno_gradiliste_id, master_id, rucni_naziv });
         });
 
         if (greska) {
@@ -768,7 +871,8 @@ function pokupiStavke() {
             kolicina:      parseFloat(row.querySelector('.st-kolicina').value) || 0,
             jm:            row.querySelector('.st-jm').value.trim(),
             lokacija:      lok.lokacija,
-            gradiliste_id: lok.gradiliste_id
+            gradiliste_id: lok.gradiliste_id,
+            namenjeno_gradiliste_id: parseInt(row.querySelector('.st-namenjeno').value) || 0
         });
     });
     return stavke.filter(function(s) { return s.naziv && s.kolicina > 0; });
@@ -838,6 +942,9 @@ function openPrenos(btn) {
     document.getElementById('prenos-katalog').value = r.dataset.katalog || 0;
     document.getElementById('prenos-lok-iz').value  = r.dataset.lokacija;
     document.getElementById('prenos-gid-iz').value  = r.dataset.gradiliste || 0;
+    document.getElementById('prenos-namenjeno-iz').value = r.dataset.namenjeno || 0;
+    // odredište podrazumevano nasleđuje namenu izvora (može se promeniti)
+    document.getElementById('prenos-namenjeno').value = (r.dataset.namenjeno && r.dataset.namenjeno !== '0') ? r.dataset.namenjeno : '';
     document.getElementById('prenos-lok-iz-disp').value = r.dataset.lokacija;
     document.getElementById('prenos-naslov').textContent = '↔ ' + r.dataset.naziv;
     document.getElementById('prenos-max').textContent = 'na stanju: ' + r.dataset.stanje + ' ' + r.dataset.jm;
@@ -859,6 +966,8 @@ function sacuvajPrenos() {
     fd.append('gradiliste_iz', document.getElementById('prenos-gid-iz').value);
     fd.append('lokacija_do',  lokDo.lokacija);
     fd.append('gradiliste_do', lokDo.gradiliste_id);
+    fd.append('namenjeno_iz', document.getElementById('prenos-namenjeno-iz').value);
+    fd.append('namenjeno_do', document.getElementById('prenos-namenjeno').value);
     fd.append('kolicina',     document.getElementById('prenos-kolicina').value);
     fd.append('datum',        document.getElementById('prenos-datum').value);
     fd.append('napomena',     document.getElementById('prenos-napomena').value);
@@ -904,6 +1013,8 @@ function openUrediStavku(btn) {
     document.getElementById('us-jm').value       = btn.dataset.jm;
     var gid = parseInt(btn.dataset.gradiliste) || 0;
     document.getElementById('us-lokacija').value = gid > 0 ? String(gid) : 'magacin';
+    var nam = parseInt(btn.dataset.namenjeno) || 0;
+    document.getElementById('us-namenjeno').value = nam > 0 ? String(nam) : '';
     document.getElementById('us-err').style.display = 'none';
     document.getElementById('uredi-stavku-modal').style.display = 'flex';
 }
@@ -918,6 +1029,7 @@ function sacuvajUrediStavku() {
     fd.append('jm',            document.getElementById('us-jm').value);
     fd.append('lokacija',      lok.lokacija);
     fd.append('gradiliste_id', lok.gradiliste_id);
+    fd.append('namenjeno_gradiliste_id', document.getElementById('us-namenjeno').value);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
         if (d.ok) { document.getElementById('uredi-stavku-modal').style.display = 'none'; location.reload(); }
         else { var e = document.getElementById('us-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }
@@ -932,6 +1044,8 @@ function openIzmena(btn) {
     document.getElementById('izmena-lokacija').value    = r.dataset.lokacija;
     document.getElementById('izmena-gid').value         = r.dataset.gradiliste || 0;
     document.getElementById('izmena-katalog').value     = r.dataset.katalog || 0;
+    document.getElementById('izmena-namenjeno-staro').value = r.dataset.namenjeno || 0;
+    document.getElementById('izmena-namenjeno').value   = (r.dataset.namenjeno && r.dataset.namenjeno !== '0') ? r.dataset.namenjeno : '';
     document.getElementById('izmena-lok-disp').value    = r.dataset.lokacija;
     document.getElementById('izmena-naziv').value       = r.dataset.naziv;
     document.getElementById('izmena-jm').value          = r.dataset.jm;
@@ -951,6 +1065,8 @@ function sacuvajIzmena() {
     fd.append('novi_naziv',   document.getElementById('izmena-naziv').value);
     fd.append('novi_jm',      document.getElementById('izmena-jm').value);
     fd.append('nova_kolicina', document.getElementById('izmena-kolicina').value);
+    fd.append('namenjeno_staro', document.getElementById('izmena-namenjeno-staro').value);
+    fd.append('namenjeno_gradiliste_id', document.getElementById('izmena-namenjeno').value);
     fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
         if (d.ok) { document.getElementById('izmena-modal').style.display = 'none'; location.reload(); }
         else { var e = document.getElementById('izmena-err'); e.textContent = d.err || 'Greška.'; e.style.display = 'block'; }

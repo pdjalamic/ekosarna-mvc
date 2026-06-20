@@ -4,13 +4,51 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-1. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#1-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
-2. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#2-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
-3. [Push notifikacije — stanje](#3-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ⏳ napravljeno; čeka SQL + test na produkciji
+2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
+3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
+4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
 
 ---
 
-## 1. Magacin — mobilni: otvaranje stavki + dokument u modalu
+## 1. Magacin — „Namenjeno za" (gradilište) + pregled loga
+
+**Datum:** 2026-06-20 · **Status:** ⏳ kod napravljen (Faze 1–4), NIJE komitovano, čeka pokretanje SQL-a i test na produkciji.
+
+### Cilj
+Objediniti na jednom mestu: **gde roba fizički jeste** (`lokacija`) i **za koje gradilište je namenjena** (`namenjeno_gradiliste_id`, nezavisno polje — sa otpremnice). Plus pregled audit loga.
+
+### Odluke (potvrđeno sa naručiocem)
+„Namenjeno za" je **po stavci**, **opciono**; u stanju se prikazuju **odvojeni redovi po nameni**.
+
+### Faza 1 — Baza · `mvc/magacin_namenjeno.sql`
+`ALTER` dodaje `namenjeno_gradiliste_id INT UNSIGNED NULL` u `magacin_promet` i `magacin_stavke` (+ indeks). Idempotentno (`IF NOT EXISTS`, MariaDB). **Pokrenuti JEDNOM na produkciji PRE deploya koda** — kontroler čita tu kolonu pri svakom otvaranju Magacina, pa bez nje Magacin puca.
+
+### Faza 2 — `app/Controllers/MagacinController.php`
+- Čuva „namenjeno za": novi ulaz (po stavci), izmena stavke, izmena stanja, prenos. Premeštanje cele lokacije zadržava namenu svakog artikla.
+- `getStanjePoLokaciji()` grupiše po `+ namenjeno_gradiliste_id` (odvojeni redovi) i povlači ime gradilišta; `stanjeArtikla()` validira po tačnoj grupi (uklj. NULL).
+- Izmena stanja: promena namene = prebacivanje količine iz stare u novu grupu.
+- Log proširen: izmene nose „namenjeno za" (staro/novo, kao **ime** gradilišta preko `gradNaziv()`); dodato logovanje **kreiranja** i **brisanja** ulaza.
+
+### Faza 3 — `app/Views/magacin/index.php`
+- „🎯 Namenjeno za" (narandžasto izdvojeno, klasa `.mag-namenjeno`) u: novi ulaz (podrazumevano + po stavci), prenos (odredište, nasleđuje izvor), izmena stanja, izmena stavke ulaza.
+- Prikaz: čip „🎯 gradilište" u listi stanja + nova kolona u stavkama ulaza.
+
+### Faza 4 — Pregled loga (tab „🕘 Istorija")
+- Novi tab u Magacinu, **vidljiv samo Direktor/AT/AF** (`Auth::isAdmin()`); non-admin ga ne vidi i `?tab=log` mu se svede na `stanje` (i u kontroleru i u view-u).
+- Kartice: akcija (obojena), tip, korisnik + datum-vreme, „Pre → Posle" (JSON snapshot čitljivo). Limit 300, najnovije gore.
+
+### Deploy redosled
+1. Pokreni `magacin_namenjeno.sql` na produkciji.
+2. Uploaduj `app/Controllers/MagacinController.php` + `app/Views/magacin/index.php`.
+3. Test: novi ulaz sa namenom → stanje (odvojeni redovi + čip) → prenos/izmena menjaju namenu → tab „Istorija" (kao admin) prikazuje izmene.
+
+### Otvoreno
+- `magacin_tabele.sql` je zastareo (nema `magacin_promet`/`magacin_log`/`gradiliste_id`); nije usklađivan sada — produkcija ide preko `magacin_namenjeno.sql`.
+
+---
+
+## 2. Magacin — mobilni: otvaranje stavki + dokument u modalu
 
 **Datum:** 2026-06-20 · **Status:** ✅ potvrđeno na web-u i telefonu; komitovano. Sve u `app/Views/magacin/index.php`.
 
@@ -21,7 +59,7 @@ Tab „Ulaz robe" (`?page=magacin&tab=primke`) je jedna `<table class="rs-tabela
 
 ---
 
-## 2. Zadaci — notifikacije + chat komentari
+## 3. Zadaci — notifikacije + chat komentari
 
 **Datum:** 2026-06-20 · **Status:** ✅ klik notifikacije i kontrola roka POTVRĐENI na uređaju; komitovano.
 
@@ -85,7 +123,7 @@ Sve iz `app/Views/zadaci/index.php`:
 
 ---
 
-## 3. Push notifikacije — stanje
+## 4. Push notifikacije — stanje
 
 **Datum:** 2026-06-16 · **Status:** ✅ Push RADI na produkciji (potvrđeno na iPhone). Ostalo poliranje + odluka web vs native.
 
