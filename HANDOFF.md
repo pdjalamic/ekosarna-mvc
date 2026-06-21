@@ -4,12 +4,41 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-00. [Magacin — izmena bez reload-a (osveži samo red)](#00-magacin--izmena-bez-reload-a-osvezi-samo-red)  · *2026-06-20* · 🔜 kod gotov + lint OK; test preostaje
+000. [Raspored — Android push za dodelu (klik otvara Danas)](#000-raspored--android-push-za-dodelu-klik-otvara-danas)  · *2026-06-20* · 🔜 kod gotov + lint OK; test na uređaju preostaje
+00. [Magacin — izmena bez reload-a (osveži samo red)](#00-magacin--izmena-bez-reload-a-osvezi-samo-red)  · *2026-06-20* · ✅ test prošao, komitovano, na produkciji
 0. [Raspored — nacrt (draft) pre objave](#0-raspored--nacrt-draft-pre-objave)  · *2026-06-20* · 🔜 kod gotov + lint OK; SQL i test na produkciji preostaju
 1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ✅ test prošao na produkciji; komitovano
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## 000. Raspored — Android push za dodelu (klik otvara Danas)
+
+**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. Test na uređaju preostaje.
+
+### Uzrok
+`RasporedController::notifikuj()` je za Android imao samo `// TODO: Push za android` — slao je **isključivo** Telegram za iOS. Zato dodeljena osoba na Androidu nije dobijala obaveštenje kad joj se zada/izmeni zadatak u rasporedu.
+
+### Popravka (1 fajl: `app/Controllers/RasporedController.php`, bez baze, bez `sw.js`)
+- `notifikuj()` sada honoriše **kanale iz Tima** (`platforma` + `platforma2`, oba do 2 kanala):
+  - `android` / `web` → **web push** preko `PushController::notifyUsers()` (isti dokazani put kao interni Zadaci);
+  - `ios` → **Telegram** (kao i pre).
+- Naslov = 1. linija poruke, telo = ostatak. `tag = 'raspored-'.$stavka_id` (više dodela = više notifikacija; otkazivanje sa istim tagom zameni staru).
+- **Klik otvara zadatak:** URL = `?page=danas&datum=<datum>` — Danas sme svaka uloga (`requireLogin`) i prikazuje radniku baš taj zadatak za taj dan (Raspored stranicu teren ne sme). `sw.js` već normalizuje URL na origin i navigira (linije 27, 54–87) — proveren put.
+- Dodati parametri `$datum` i `$stavka_id` u `notifikuj()` i prosleđeni sa **svih 6** poziva: dodavanje, izmena (uklonjen + nov/izmenjen radnik), brisanje/otkaz, nova poruka, objava nacrta.
+
+### Mapiranje kanala (Tim → ponašanje)
+| Tim opcija | platforma | Ponašanje |
+|---|---|---|
+| 🤖 Android (Push notifikacije) | `android` | web push |
+| 🌐 Web only | `web` | web push |
+| 🍎 iOS (Telegram notifikacije) | `ios` | Telegram |
+
+### Test
+- Korisnik sa kanalom Android (i aktiviranom push pretplatom na svom telefonu): zadaj mu stavku u rasporedu („Objavi"/„Obavesti odmah") → stigne push → klik → otvara se **Danas** na tom danu sa zadatkom.
+- Provera kanala: ako ne stigne, prvo u Timu vidi da li mu je kanal `android`/`web` i da li je uopšte aktivirao push na uređaju (`logs/push_send.log`).
 
 ---
 

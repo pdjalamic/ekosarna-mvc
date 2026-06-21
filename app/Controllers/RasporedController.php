@@ -266,7 +266,7 @@ class RasporedController extends \Core\Controller
                     }
 
                     if ($obavesti_tip === 'odmah') {
-                        $this->notifikuj($radnik_id, Auth::ime(), $poruka);
+                        $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danInfo['datum'] ?? '', $stavka_id);
                     } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
                         $this->zakaziObavestenje($stavka_id, $radnik_id, $poruka, $obavesti_at);
                     }
@@ -315,7 +315,8 @@ class RasporedController extends \Core\Controller
                 // Dohvati datum
                 $danStmt = $this->db->prepare("SELECT datum FROM raspored_dani WHERE id=?");
                 $danStmt->execute([$staro['dan_id']]);
-                $datum_fmt = date('d.m.Y', strtotime($danStmt->fetchColumn()));
+                $danDatum  = (string)$danStmt->fetchColumn();
+                $datum_fmt = date('d.m.Y', strtotime($danDatum));
 
                 // Ažuriraj stavku (sa odgovoran_id i status)
                 $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=?, status=? WHERE id=?");
@@ -334,7 +335,7 @@ class RasporedController extends \Core\Controller
                     if (!isset($noviMap[$radnik_id])) {
                         $poruka = "❌ Uklonjen si sa zadatka:\n📋 {$staro['opis']}\n🏗️ {$gStaroNaziv}\n📅 {$datum_fmt}";
                         if ($obavesti_tip === 'odmah') {
-                            $this->notifikuj($radnik_id, Auth::ime(), $poruka);
+                            $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danDatum, $id);
                         } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
                             $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at);
                         }
@@ -411,7 +412,7 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                     }
 
                     if ($obavesti_tip === 'odmah') {
-                        $this->notifikuj($radnik_id, Auth::ime(), $poruka);
+                        $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danDatum, $id);
                     } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
                         $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at);
                     }
@@ -431,7 +432,7 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                     $stmt->execute([$id]);
                     foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $radnik_id) {
                         $poruka = "❌ Otkazan zadatak:\n📋 {$stavo['opis']}\n🏗️ {$stavo['gn']}\n📅 {$datum_fmt}";
-                        $this->notifikuj($radnik_id, Auth::ime(), $poruka);
+                        $this->notifikuj($radnik_id, Auth::ime(), $poruka, $stavo['datum'] ?? '', $id);
                     }
                 }
 
@@ -550,11 +551,16 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $stmt = $this->db->prepare("INSERT INTO raspored_poruke (stavka_id, autor_id, sadrzaj) VALUES (?, ?, ?)");
                 $stmt->execute([$stavka_id, Auth::id(), $sadrzaj]);
 
+                // Datum stavke (za deep-link u notifikaciji)
+                $dStmt = $this->db->prepare("SELECT rd.datum FROM raspored_stavke rs JOIN raspored_dani rd ON rs.dan_id=rd.id WHERE rs.id=?");
+                $dStmt->execute([$stavka_id]);
+                $pDatum = (string)$dStmt->fetchColumn();
+
                 $stmt = $this->db->prepare("SELECT radnik_id FROM raspored_radnici WHERE stavka_id=?");
                 $stmt->execute([$stavka_id]);
                 foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $radnik_id) {
                     if ($radnik_id != Auth::id()) {
-                        $this->notifikuj($radnik_id, Auth::ime(), '💬 Nova poruka na rasporedu: ' . mb_substr($sadrzaj, 0, 50));
+                        $this->notifikuj($radnik_id, Auth::ime(), '💬 Nova poruka na rasporedu: ' . mb_substr($sadrzaj, 0, 50), $pDatum, $stavka_id);
                     }
                 }
                 $this->json(['ok' => true]);
@@ -697,7 +703,7 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
             } elseif ($odgovoran_id && $odgovoran_ime !== '') {
                 $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
             }
-            $this->notifikuj($radnik_id, Auth::ime(), $poruka);
+            $this->notifikuj($radnik_id, Auth::ime(), $poruka, $s['datum'] ?? '', $stavka_id);
         }
     }
 
@@ -751,22 +757,52 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
         } catch (\Throwable $e) {}
     }
 
-    private function notifikuj(int $radnik_id, string $posiljalac, string $poruka): void
+    /**
+     * Obaveštava radnika preko kanala podešenih u Timu (platforma + platforma2):
+     *   android / web → web push (PushController), ios → Telegram.
+     * $datum (Y-m-d) i $stavka_id služe da klik na notifikaciju otvori "Danas"
+     * na tačan dan i da tag bude jedinstven po stavci (više zadataka = više notifikacija).
+     */
+    private function notifikuj(int $radnik_id, string $posiljalac, string $poruka, string $datum = '', int $stavka_id = 0): void
     {
         try {
-            $stmt = $this->db->prepare("SELECT platforma FROM admin_korisnici WHERE id=?");
+            $stmt = $this->db->prepare("SELECT platforma, platforma2 FROM admin_korisnici WHERE id=?");
             $stmt->execute([$radnik_id]);
-            $platforma = $stmt->fetchColumn() ?: 'android';
-            if ($platforma === 'ios') {
-                $stmt = $this->db->prepare("SELECT chat_id FROM telegram_subscriptions WHERE korisnik_id=? AND aktivan=1");
-                $stmt->execute([$radnik_id]);
+            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$row) return;
+
+            $platforme = array_unique(array_filter([$row['platforma'] ?? '', $row['platforma2'] ?? '']));
+            if (!$platforme) $platforme = ['android'];
+
+            $wantWeb      = (bool)array_intersect($platforme, ['android', 'web']);
+            $wantTelegram = in_array('ios', $platforme, true);
+
+            // Web push (Android / Web kanal)
+            if ($wantWeb) {
+                $linije = explode("\n", $poruka);
+                $naslov = trim($linije[0]) ?: 'Raspored';
+                $telo   = trim(implode("\n", array_slice($linije, 1)));
+                if ($telo === '') $telo = $naslov;
+                PushController::notifyUsers([$radnik_id], [
+                    'title' => mb_substr($naslov, 0, 80),
+                    'body'  => mb_substr($telo, 0, 160),
+                    'url'   => BASE_URL . '/?page=danas' . ($datum ? '&datum=' . urlencode($datum) : ''),
+                    'tag'   => $stavka_id ? ('raspored-' . $stavka_id) : 'raspored',
+                    'icon'  => BASE_URL . '/public/icon-192.png',
+                ]);
+            }
+
+            // Telegram (iOS kanal)
+            if ($wantTelegram) {
+                $stmt2 = $this->db->prepare("SELECT chat_id FROM telegram_subscriptions WHERE korisnik_id=? AND aktivan=1");
+                $stmt2->execute([$radnik_id]);
                 $token = $_ENV['TELEGRAM_BOT_TOKEN'] ?? '';
-                $text  = urlencode($poruka);
-                foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $chat_id) {
+                $link  = 'ekosarna.com/mvc/?page=danas' . ($datum ? '&datum=' . urlencode($datum) : '');
+                $text  = urlencode($poruka . "\n\n" . $link);
+                foreach ($stmt2->fetchAll(\PDO::FETCH_COLUMN) as $chat_id) {
                     @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?chat_id={$chat_id}&text={$text}");
                 }
             }
-            // TODO: Push za android
         } catch (\Throwable $e) {}
     }
 }
