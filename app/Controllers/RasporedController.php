@@ -104,12 +104,20 @@ class RasporedController extends \Core\Controller
                 }
                 unset($s);
 
-                // Razdvoj objavljene (idu u glavnu tabelu) od nacrta (gornji blok)
+                // Razdvoj objavljene (idu u glavnu tabelu) od nacrta (gornji blok).
+                // Nacrt vidi SAMO njegov kreator (legacy nacrti bez kreatora = vidljivi svima,
+                // fallback); tuđi nacrt se ne prikazuje nikome.
+                $mojId = (int)Auth::id();
                 $objavljene = [];
                 $nacrtStavke = [];
                 foreach ($stavke as $st) {
-                    if (($st['status'] ?? 'objavljeno') === 'nacrt') $nacrtStavke[] = $st;
-                    else $objavljene[] = $st;
+                    if (($st['status'] ?? 'objavljeno') === 'nacrt') {
+                        $kid = (int)($st['kreator_id'] ?? 0);
+                        if ($kid === 0 || $kid === $mojId) $nacrtStavke[] = $st;
+                        // tuđi nacrt → preskoči
+                    } else {
+                        $objavljene[] = $st;
+                    }
                 }
                 $dan['stavke'] = $objavljene;
 
@@ -171,6 +179,10 @@ class RasporedController extends \Core\Controller
                 $datum_od = $_POST['datum_od'] ?? '';
                 $datum_do = $_POST['datum_do'] ?? '';
                 if (!$datum_od || !$datum_do) $this->json(['ok' => false, 'err' => 'Nema datuma.']);
+                // Zabrana unazad: ne pravi nedelju koja je cela u prošlosti.
+                if ($datum_do < date('Y-m-d')) {
+                    $this->json(['ok' => false, 'err' => 'Ne može se praviti raspored za prošlu nedelju.']);
+                }
 
                 $stmt = $this->db->prepare("SELECT id FROM radne_nedelje WHERE datum_od=?");
                 $stmt->execute([$datum_od]);
@@ -218,6 +230,12 @@ class RasporedController extends \Core\Controller
                 $danStmt = $this->db->prepare("SELECT rd.datum, rn.datum_od, rn.datum_do FROM raspored_dani rd JOIN radne_nedelje rn ON rd.nedelja_id = rn.id WHERE rd.id=?");
                 $danStmt->execute([$dan_id]);
                 $danInfo = $danStmt->fetch(\PDO::FETCH_ASSOC);
+
+                // Zabrana pravljenja rasporeda unazad: dan ne sme biti pre današnjeg.
+                if (!$danInfo) $this->json(['ok' => false, 'err' => 'Dan ne postoji.']);
+                if ($danInfo['datum'] < date('Y-m-d')) {
+                    $this->json(['ok' => false, 'err' => 'Ne može se praviti raspored za prošli datum (' . date('d.m.Y', strtotime($danInfo['datum'])) . ').']);
+                }
 
                 // Gradilište naziv
                 $gNaziv = '';

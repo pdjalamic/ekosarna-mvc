@@ -4,6 +4,7 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
 000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
 00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
 0000. [Raspored — zakazano (scheduled) + logo badge](#0000-raspored--zakazano-scheduled--logo-badge)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + cPanel cron + test preostaju
@@ -14,6 +15,27 @@
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## 0000000. Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez novog SQL-a** (`kreator_id` već dodat u prethodnom koraku — `raspored_kreator.sql`). Test preostaje.
+
+### #1 — Nacrt vidi samo kreator
+`index()` sada nacrt-stavku stavlja u gornji blok **samo ako je `kreator_id == ja`** (legacy nacrti bez kreatora = vidljivi svima, fallback); tuđi nacrt se **ne prikazuje nikome** (ni u glavnoj tabeli). Objavljene stavke ostaju vidljive svima. Koristi `raspored_stavke.kreator_id`.
+
+### #2 — Zabrana pravljenja rasporeda unazad
+- **Server (izvor istine):** `raspored_dodaj_stavku` odbija dan `< danas`; `raspored_init_nedelja` odbija nedelju koja je cela u prošlosti (`datum_do < danas`).
+- **View:** postojeći `$je_prosla` je bio **po nedelji** (dozvoljavao juče u tekućoj nedelji); dodat **per-dan** `$dan_prosli` koji sakriva „+ Nova stavka"/„+" na prošlim danima i u tekućoj nedelji. JS `openDodajStavku` dodatno blokira (`datum < danasYMD()`) za slučaj strane otvorene preko ponoći.
+
+### Izmenjeni fajlovi (2, bez SQL-a)
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/RasporedController.php` | #1 filter nacrta po `kreator_id`; #2 guard u `raspored_dodaj_stavku` i `raspored_init_nedelja`. |
+| `app/Views/raspored/index.php` | #2 `$dan_prosli` (sakriva „+“ na prošlim danima) + JS guard u `openDodajStavku`. |
+
+**Deploy:** uploaduj ta 2 fajla. (SQL `raspored_kreator.sql` je već pokrenut.) Test #1: napravi nacrt kao korisnik A → korisnik B ga ne vidi. Test #2: u tekućoj nedelji „+“ se ne vidi na prošlim danima; pokušaj direktno → server odbije.
 
 ---
 

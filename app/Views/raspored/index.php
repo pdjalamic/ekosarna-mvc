@@ -127,6 +127,8 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             $stavke = $dan['stavke'] ?? [];
             $boja_dana = $boje[$i];
             $broj_stavki = count($stavke);
+            // Pojedinačni dan u prošlosti (npr. juče u tekućoj nedelji) — bez „+ dodaj"
+            $dan_prosli = ($datum_dana < date('Y-m-d'));
 
             $gradiliste_boje_mapa = [];
             foreach ($stavke as $s) {
@@ -147,7 +149,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
             </td>
             <td colspan="3" style="color:var(--muted);font-size:13px;font-style:italic;">Nema zadataka</td>
             <td style="text-align:right;">
-                <?php if (!$je_prosla): ?>
+                <?php if (!$je_prosla && !$dan_prosli): ?>
                 <button type="button" class="btn-sm mark"
                     onclick="openDodajStavku('<?= $datum_dana ?>', <?= $dan ? $dan['id'] : 'null' ?>, <?= $i ?>)"
                     style="font-size:11px;">+ Nova stavka</button>
@@ -207,7 +209,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
                 </button>
                 <?php if (!$je_prosla): ?>
                 <button type="button" class="btn-sm del" onclick="obrisiStavku(<?= $s['id'] ?>)" title="Obriši">🗑</button>
-                <?php if ($si === $broj_stavki - 1): ?>
+                <?php if ($si === $broj_stavki - 1 && !$dan_prosli): ?>
                 <button type="button" class="btn-sm mark"
                     onclick="openDodajStavku('<?= $datum_dana ?>', <?= $dan['id'] ?>, <?= $i ?>)"
                     style="font-size:11px;" title="Nova stavka">+</button>
@@ -525,7 +527,17 @@ document.querySelectorAll('input[name="rs_obavesti"]').forEach(function(r) {
     });
 });
 
+function danasYMD() {
+    var d = new Date();
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+}
+
 function openDodajStavku(datum, danId, danIndex) {
+    // Zabrana pravljenja rasporeda unazad (i ako strana ostane otvorena preko ponoći)
+    if (datum && datum < danasYMD()) {
+        alert('Ne može se praviti raspored za prošli datum. Izaberi današnji ili budući dan.');
+        return;
+    }
     _rsStavkaId = 0;
     _rsDanId    = danId;
     document.getElementById('rs-modal-title').textContent = 'Nova stavka';
