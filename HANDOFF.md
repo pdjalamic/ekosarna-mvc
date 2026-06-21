@@ -4,13 +4,13 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
-000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
-00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
-0000. [Raspored — zakazano (scheduled) + logo badge](#0000-raspored--zakazano-scheduled--logo-badge)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + cPanel cron + test preostaju
-000. [Raspored — Android push za dodelu (klik otvara Danas)](#000-raspored--android-push-za-dodelu-klik-otvara-danas)  · *2026-06-20* · 🔜 kod gotov + lint OK; test na uređaju preostaje
+0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · ✅ radi, komitovano (`bdfdd9a`), na produkciji
+000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji
+00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · ✅ radi, komitovano (`44ae11e`), na produkciji
+0000. [Raspored — zakazano (scheduled) + logo badge](#0000-raspored--zakazano-scheduled--logo-badge)  · *2026-06-21* · ✅ radi (cron postavljen), komitovano (`44ae11e`), na produkciji
+000. [Raspored — Android push za dodelu (klik otvara Danas)](#000-raspored--android-push-za-dodelu-klik-otvara-danas)  · *2026-06-20* · ✅ radi, komitovano (`a498338`), na produkciji
 00. [Magacin — izmena bez reload-a (osveži samo red)](#00-magacin--izmena-bez-reload-a-osvezi-samo-red)  · *2026-06-20* · ✅ test prošao, komitovano, na produkciji
-0. [Raspored — nacrt (draft) pre objave](#0-raspored--nacrt-draft-pre-objave)  · *2026-06-20* · 🔜 kod gotov + lint OK; SQL i test na produkciji preostaju
+0. [Raspored — nacrt (draft) pre objave](#0-raspored--nacrt-draft-pre-objave)  · *2026-06-20* · ✅ radi, na produkciji (SQL pokrenut); prošireno u sekciji 0000000
 1. [Magacin — „Namenjeno za" (gradilište) + pregled loga](#1-magacin--namenjeno-za-gradiliste--pregled-loga)  · *2026-06-20* · ✅ test prošao na produkciji; komitovano
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
@@ -20,7 +20,7 @@
 
 ## 0000000. Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)
 
-**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez novog SQL-a** (`kreator_id` već dodat u prethodnom koraku — `raspored_kreator.sql`). Test preostaje.
+**Datum:** 2026-06-21 · **Status:** ✅ radi, komitovano (`bdfdd9a`), na produkciji. **Bez novog SQL-a** (`kreator_id` već dodat u prethodnom koraku — `raspored_kreator.sql`).
 
 ### #1 — Nacrt vidi samo kreator
 `index()` sada nacrt-stavku stavlja u gornji blok **samo ako je `kreator_id == ja`** (legacy nacrti bez kreatora = vidljivi svima, fallback); tuđi nacrt se **ne prikazuje nikome** (ni u glavnoj tabeli). Objavljene stavke ostaju vidljive svima. Koristi `raspored_stavke.kreator_id`.
@@ -41,7 +41,7 @@
 
 ## 000000. Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda
 
-**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez izmene baze.** Test preostaje.
+**Datum:** 2026-06-21 · **Status:** ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji.
 
 ### Traženo
 Poruke po zadatku na rasporedu su se na webu videle/slale, ali na Androidu „samo obaveštenje koje se ne vidi i nema ikonice". Treba: poruka → **svi sa zadatka (radnici + odgovoran za materijal) dobiju notifikaciju** na **web/Android/iPhone** → iz notifikacije se otvara baš taj thread → odgovore → svi opet dobiju.
@@ -73,7 +73,7 @@ Uploaduj `RasporedController.php`, `DanasController.php`, `app/Views/danas/index
 
 ## 00000. Raspored — odgovoran za materijal (vođe + notifikacije + Danas)
 
-**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez izmene baze.** Test preostaje.
+**Datum:** 2026-06-21 · **Status:** ✅ radi, komitovano (`44ae11e`), na produkciji. **Bez izmene baze.**
 
 ### Traženo (3 stavke)
 1. Kad se neko dodeli na zadatak I označi kao odgovoran za materijal → **jedna** spojena poruka (već radi za jedno snimanje). Skidanje/dodavanje odgovornosti → onaj koga se tiče dobija notifikaciju — **i kad nije radnik** na zadatku.
@@ -98,7 +98,7 @@ Uploaduj `app/Core/Auth.php`, `app/Controllers/RasporedController.php`, `app/Con
 
 ## 0000. Raspored — zakazano (scheduled) + logo badge
 
-**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL + cPanel cron + test PREOSTAJE.**
+**Datum:** 2026-06-21 · **Status:** ✅ radi, komitovano (`44ae11e`), na produkciji (SQL pokrenut, cPanel cron postavljen, zakazano + badge potvrđeni).
 
 ### #4 — „Zakaži obaveštenje" sada radi (pravi uzrok nađen)
 Tabela `raspored_obavestenja` je čuvala **samo** `nedelja_id+send_at` — bez primaoca i bez teksta — a **nijedan cron je nije čitao** (`grep`: pisana na 1 mestu, čitana nigde). Zato zakazano slanje nikad nije odlazilo (npr. zakazano uveče za 07:00). Plus: `datetime-local` daje `...T07:00`, a MariaDB traži razmak.
@@ -141,7 +141,7 @@ Statusna traka na Androidu uvek prikazuje **belu siluetu** (OS pravilo, ne naš 
 
 ## 000. Raspored — Android push za dodelu (klik otvara Danas)
 
-**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. Test na uređaju preostaje.
+**Datum:** 2026-06-20 · **Status:** ✅ radi, komitovano (`a498338`), na produkciji.
 
 ### Uzrok
 `RasporedController::notifikuj()` je za Android imao samo `// TODO: Push za android` — slao je **isključivo** Telegram za iOS. Zato dodeljena osoba na Androidu nije dobijala obaveštenje kad joj se zada/izmeni zadatak u rasporedu.
@@ -169,7 +169,7 @@ Statusna traka na Androidu uvek prikazuje **belu siluetu** (OS pravilo, ne naš 
 
 ## 00. Magacin — izmena bez reload-a (osveži samo red)
 
-**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. Test preostaje.
+**Datum:** 2026-06-20 · **Status:** ✅ test prošao, komitovano (`e483f34`), na produkciji.
 
 ### Cilj
 Izmena artikla u **Stanju zaliha** i u **Ulazu robe** je radila `location.reload()` cele strane → sporo kad lokacija ima 50+ artikala (npr. masovno postavljanje „namenjeno za"). Treba osvežiti **samo taj red**.
@@ -193,7 +193,7 @@ Izmena artikla u **Stanju zaliha** i u **Ulazu robe** je radila `location.reload
 
 ## 0. Raspored — nacrt (draft) pre objave
 
-**Datum:** 2026-06-20 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL na produkciji + test PREOSTAJE.**
+**Datum:** 2026-06-20 · **Status:** ✅ radi, na produkciji (SQL pokrenut, komitovano `376dac7`). Prošireno u sekciji 0000000 (#1).
 
 ### Cilj
 Inženjer pravi dnevni raspored uz prekide. Treba mu da snima raspored kao **nacrt** dok ne završi — **bez slanja obaveštenja ekipi** — pa da na kraju **objavi** (tek tada obaveštenja odlete).
