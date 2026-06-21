@@ -28,6 +28,16 @@ class ZadaciController extends \Core\Controller
         $zdodRaw = $_GET['zdod'] ?? '';
         $prihvatioMode = (ctype_digit((string)$zdodRaw) && (int)$zdodRaw > 0) ? (int)$zdodRaw : 'svi';
 
+        $jeDirektor = (Auth::uloga() === 'Direktor');
+
+        // Default vidljivost: BEZ izabrane „Prihvatio" osobe, ne-Direktor ne vidi TUĐE
+        // prihvaćene zadatke — samo neprihvaćene + one koje je on lično prihvatio.
+        // (Kada se filtrira po konkretnoj osobi, $uScope to već ograničava, pa ovo propušta.)
+        $vidljivoDefault = function($z) use ($uid, $jeDirektor, $prihvatioMode) {
+            if ($jeDirektor || $prihvatioMode !== 'svi') return true;
+            return empty($z['prihvaceno_id']) || (int)$z['prihvaceno_id'] === (int)$uid;
+        };
+
         $filters = [
             'status'     => $_GET['zstatus']    ?? '',
             'q'          => trim($_GET['zq']    ?? ''),
@@ -51,8 +61,9 @@ class ZadaciController extends \Core\Controller
             'kategorija' => $filters['kategorija'],
         ]);
 
-        // Primeni opseg (svi / konkretna osoba)
+        // Primeni opseg (svi / konkretna osoba) + default vidljivost (sakrij tuđe prihvaćene)
         $svi_zadaci = array_values(array_filter($svi_zadaci, $uScope));
+        $svi_zadaci = array_values(array_filter($svi_zadaci, $vidljivoDefault));
 
         // Dohvati dodatne podatke
         foreach ($svi_zadaci as &$z) {
@@ -81,14 +92,17 @@ if ($filters['status'] === '') {
     $svi_zadaci = array_values(array_filter($svi_zadaci, fn($z) => $z['status'] !== 'zavrseno'));
 }
 
-        // Grupa za default redosled:
-        // 0 = neprihvaćen + dodeljen (čeka prihvatanje), 1 = neprihvaćen + nedodeljen,
-        // 2 = moji prihvaćeni, 3 = tuđi prihvaćeni
-        $grupa = function($z) use ($uid) {
-            if (empty($z['prihvaceno_id'])) {
-                return !empty($z['dodeljeno_id']) ? 0 : 1;
+        // Grupa za default (inicijalni) redosled:
+        //  • Direktor vidi SVE: (0) neprihvaćeni → (1) prihvaćeni.
+        //  • Ostali: (0) neprihvaćeni → (1) koje sam JA prihvatio → (2) tuđi prihvaćeni.
+        // Unutar grupe: najnoviji unos prvi (id opadajuće).
+        $grupa = function($z) use ($uid, $jeDirektor) {
+            $prihvacen = !empty($z['prihvaceno_id']);
+            if ($jeDirektor) {
+                return $prihvacen ? 1 : 0;
             }
-            return ((int)$z['prihvaceno_id'] === (int)$uid) ? 2 : 3;
+            if (!$prihvacen) return 0;
+            return ((int)$z['prihvaceno_id'] === (int)$uid) ? 1 : 2;
         };
 
         // Sortiranje
@@ -105,12 +119,9 @@ if ($filters['status'] === '') {
                 if (!$b['rok']) return -1;
                 return strcmp($b['rok'], $a['rok']);
             }
-            // Default: po grupi (neprihvaćeni → nedodeljeni → moji → ostali),
-            // unutar grupe po datumu unosa opadajuće (najnoviji prvi)
+            // Default: po grupi (vidi $grupa), unutar grupe najnoviji unos prvi (id opadajuće)
             $ga = $grupa($a); $gb = $grupa($b);
             if ($ga !== $gb) return $ga - $gb;
-            $ca = $a['datum_kreiranja'] ?? ''; $cb = $b['datum_kreiranja'] ?? '';
-            if ($ca !== $cb) return strcmp($cb, $ca);
             return $b['id'] - $a['id'];
         });
 
@@ -136,6 +147,7 @@ if ($filters['status'] === '') {
             'kategorija' => $filters['kategorija'],
         ]);
         $scopeBase = array_filter($scopeBase, $uScope);
+        $scopeBase = array_filter($scopeBase, $vidljivoDefault);
         $svi      = count($scopeBase);
         $otvoreno = count(array_filter($scopeBase, fn($z) => $z['status'] === 'otvoreno'));
         $u_toku   = count(array_filter($scopeBase, fn($z) => $z['status'] === 'u_toku'));

@@ -310,6 +310,12 @@ Tab „Ulaz robe" (`?page=magacin&tab=primke`) je jedna `<table class="rs-tabela
 
 **Datum:** 2026-06-20 · **Status:** ✅ klik notifikacije i kontrola roka POTVRĐENI na uređaju; komitovano.
 
+### Update 2026-06-21 — Zadaci: inicijalni prikaz po ulozi (default view)
+`ZadaciController::index()`, samo DEFAULT (bez izabrane „Prihvatio" osobe):
+- **Vidljivost:** **Direktor** vidi sve; **ostali** (uklj. AT/AF) vide **neprihvaćene + samo one koje su LIČNO prihvatili** — tuđi prihvaćeni se **NE prikazuju** (`$vidljivoDefault`; primenjen i na listu i na brojače).
+- **Redosled:** Direktor — (0) neprihvaćeni → (1) prihvaćeni; ostali — (0) neprihvaćeni → (1) moji prihvaćeni. Unutar grupe **id opadajuće** (najnoviji prvi).
+- **Filteri ostaju:** kad se izabere „Prihvatio: <osoba>", `$uScope` ograničava na tu osobu a `$vidljivoDefault` propušta (pa se i tuđi vide kroz filter). `rok` sort, status, pretraga, kategorija, paginacija netaknuti. 1 fajl, bez baze.
+
 ### Update 2026-06-21 — Zadaci notifikacije sada poštuju kanal (iPhone/Telegram)
 **Uzrok:** Zadaci su slali samo `PushController::notifyUsers()` = **samo web push**; iPhone korisnici (kanal `ios`) idu preko **Telegrama**, pa nisu dobijali ništa. **Popravka:** nova kanalno-svesna metoda `PushController::notifyKanali($userIds, $payload, $tgText=null)` (android/web → web push; ios → Telegram, tekst iz title+body+url). Sva 3 Zadaci slanja (`zadatak_add`, `zadatak_prihvati`, `zadatak_komentar`) je koriste. 2 fajla: `PushController.php` + `ZadaciController.php`, bez baze. *(Napomena: iPhone mora imati kanal `ios` u Timu i povezan Telegram (`telegram_subscriptions.aktivan=1`). Raspored `notifikuj()` i dalje ima svoju kopiju logike — može se kasnije svesti na `notifyKanali`.)*
 
