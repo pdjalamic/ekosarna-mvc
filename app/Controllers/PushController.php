@@ -103,6 +103,70 @@ class PushController extends \Core\Controller
         return $sent;
     }
 
+    /**
+     * Kanalno-svesno obaveštavanje liste korisnika, po kanalima iz Tima
+     * (admin_korisnici.platforma + platforma2):
+     *   android / web → web push;  ios → Telegram.
+     * Tiha je (ne baca). $payload je web-push payload (title/body/url/...);
+     * za Telegram se tekst gradi iz title+body+url, ili se prosledi $tgText.
+     */
+    public static function notifyKanali(array $userIds, array $payload, ?string $tgText = null): void
+    {
+        $userIds = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (!$userIds) return;
+
+        $sentWeb = 0;
+        try {
+            $db = \Core\Database::get();
+            foreach ($userIds as $uid) {
+                $st = $db->prepare("SELECT platforma, platforma2 FROM admin_korisnici WHERE id=?");
+                $st->execute([$uid]);
+                $row = $st->fetch(\PDO::FETCH_ASSOC);
+                if (!$row) continue;
+
+                $kanali = array_unique(array_filter([$row['platforma'] ?? '', $row['platforma2'] ?? '']));
+                if (!$kanali) $kanali = ['android'];
+
+                // Web push (android / web kanal)
+                if (array_intersect($kanali, ['android', 'web'])) {
+                    foreach (PushSubscription::getByKorisnik($uid) as $sub) {
+                        if (self::sendToSubscription([
+                            'endpoint' => $sub['endpoint'],
+                            'p256dh'   => $sub['p256dh'],
+                            'auth_key' => $sub['auth_key'],
+                        ], $payload)) $sentWeb++;
+                    }
+                }
+
+                // Telegram (ios kanal)
+                if (in_array('ios', $kanali, true)) {
+                    $text = $tgText ?? trim(
+                        ($payload['title'] ?? '') . "\n" .
+                        ($payload['body'] ?? '') .
+                        (isset($payload['url']) ? "\n\n" . $payload['url'] : '')
+                    );
+                    self::sendTelegram($uid, $text, $db);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[Push notifyKanali] ' . $e->getMessage());
+        }
+        self::logSend($payload, count($userIds), $sentWeb);
+    }
+
+    /** Pošalji Telegram poruku svim aktivnim chat-ovima korisnika. */
+    private static function sendTelegram(int $uid, string $text, \PDO $db): void
+    {
+        $token = defined('TELEGRAM_BOT_TOKEN') ? TELEGRAM_BOT_TOKEN : ($_ENV['TELEGRAM_BOT_TOKEN'] ?? '');
+        if (!$token) return;
+        $st = $db->prepare("SELECT chat_id FROM telegram_subscriptions WHERE korisnik_id=? AND aktivan=1");
+        $st->execute([$uid]);
+        $enc = urlencode($text);
+        foreach ($st->fetchAll(\PDO::FETCH_COLUMN) as $chatId) {
+            @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?chat_id={$chatId}&text={$enc}");
+        }
+    }
+
     /** Upisuje jednu liniju u logs/push_send.log */
     private static function logSend(array $payload, int $primalaca, int $poslato): void
     {

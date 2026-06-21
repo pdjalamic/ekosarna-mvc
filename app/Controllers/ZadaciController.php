@@ -171,7 +171,7 @@ if ($filters['status'] === '') {
 
                 // Push obaveštenje dodeljenom korisniku — osim ako je sam sebi zadao
                 $primaociIds = array_filter([$dodeljeno], fn($x) => (int)$x !== (int)$uid);
-                PushController::notifyUsers($primaociIds, [
+                PushController::notifyKanali($primaociIds, [
                     'title' => '📋 Novi zadatak',
                     'body'  => mb_substr($tekst, 0, 120),
                     'url'   => BASE_URL . '/?page=zadaci&openz=' . $newId,
@@ -208,7 +208,7 @@ if ($filters['status'] === '') {
                 $tekstZad = (string)($z['tekst'] ?? '');
                 $primaociIds = array_filter([(int)$z['kreirao_id']], fn($x) => $x && (int)$x !== (int)$uid);
                 if ($primaociIds) {
-                    PushController::notifyUsers($primaociIds, [
+                    PushController::notifyKanali($primaociIds, [
                         'title' => '✅ Zadatak prihvaćen',
                         'body'  => Auth::ime() . ' je prihvatio zadatak: ' . mb_substr($tekstZad, 0, 100),
                         'url'   => BASE_URL . '/?page=zadaci&openz=' . $id,
@@ -238,16 +238,28 @@ if ($filters['status'] === '') {
                 $st->execute([$komId]);
                 $kom = $st->fetch(\PDO::FETCH_ASSOC);
 
-                // Obavesti drugu stranu (zadavalac + onaj koji je prihvatio), osim autora komentara
-                $st = $this->db->prepare("SELECT kreirao_id, prihvaceno_id FROM interni_zadaci WHERE id=?");
+                // Obavesti SVE učesnike razgovora, osim autora komentara:
+                //   kreator + dodeljeni + prihvatilac + svi koji su ranije komentarisali.
+                // (Dodeljeni dobija i PRE prihvatanja; treća osoba u prepisci takođe.)
+                $st = $this->db->prepare("SELECT kreirao_id, dodeljeno_id, prihvaceno_id FROM interni_zadaci WHERE id=?");
                 $st->execute([$id]);
                 $zk = $st->fetch(\PDO::FETCH_ASSOC) ?: [];
-                $primaociIds = array_filter(
-                    [(int)($zk['kreirao_id'] ?? 0), (int)($zk['prihvaceno_id'] ?? 0)],
+                $ucesnici = [
+                    (int)($zk['kreirao_id'] ?? 0),
+                    (int)($zk['dodeljeno_id'] ?? 0),
+                    (int)($zk['prihvaceno_id'] ?? 0),
+                ];
+                $ca = $this->db->prepare("SELECT DISTINCT autor_id FROM zadaci_komentari WHERE zadatak_id=?");
+                $ca->execute([$id]);
+                foreach ($ca->fetchAll(\PDO::FETCH_COLUMN) as $aid) {
+                    $ucesnici[] = (int)$aid;
+                }
+                $primaociIds = array_values(array_unique(array_filter(
+                    $ucesnici,
                     fn($x) => $x && (int)$x !== (int)$uid
-                );
+                )));
                 if ($primaociIds) {
-                    PushController::notifyUsers($primaociIds, [
+                    PushController::notifyKanali($primaociIds, [
                         'title' => '💬 Komentar na zadatak',
                         'body'  => 'Komentar na zadatak od ' . Auth::ime() . ': ' . mb_substr($tekst, 0, 50),
                         'url'   => BASE_URL . '/?page=zadaci&openz=' . $id,

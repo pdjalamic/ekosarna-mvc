@@ -224,6 +224,12 @@ Tab „Ulaz robe" (`?page=magacin&tab=primke`) je jedna `<table class="rs-tabela
 
 **Datum:** 2026-06-20 · **Status:** ✅ klik notifikacije i kontrola roka POTVRĐENI na uređaju; komitovano.
 
+### Update 2026-06-21 — Zadaci notifikacije sada poštuju kanal (iPhone/Telegram)
+**Uzrok:** Zadaci su slali samo `PushController::notifyUsers()` = **samo web push**; iPhone korisnici (kanal `ios`) idu preko **Telegrama**, pa nisu dobijali ništa. **Popravka:** nova kanalno-svesna metoda `PushController::notifyKanali($userIds, $payload, $tgText=null)` (android/web → web push; ios → Telegram, tekst iz title+body+url). Sva 3 Zadaci slanja (`zadatak_add`, `zadatak_prihvati`, `zadatak_komentar`) je koriste. 2 fajla: `PushController.php` + `ZadaciController.php`, bez baze. *(Napomena: iPhone mora imati kanal `ios` u Timu i povezan Telegram (`telegram_subscriptions.aktivan=1`). Raspored `notifikuj()` i dalje ima svoju kopiju logike — može se kasnije svesti na `notifyKanali`.)*
+
+### Update 2026-06-21 — komentar-notifikacija svim učesnicima razgovora
+Komentar-notifikacija je išla samo `kreirao_id` + `prihvaceno_id`; promašivala je (a) dodeljenog dok ne prihvati i (b) **treću osobu** uključenu u prepisku (npr. admin/inženjer koji nije ni kreator ni dodeljeni). `zadatak_komentar` sada cilja `kreirao_id` + `dodeljeno_id` + `prihvaceno_id` + **sve koji su ranije komentarisali** (`DISTINCT autor_id` iz `zadaci_komentari`), dedup, osim autora trenutnog komentara. `openz` deep-link (otvara zadatak proširen) je već radio. 1 fajl: `ZadaciController.php`, bez baze.
+
 ### Update 2026-06-20 (kasnije) — klik notifikacije REŠEN + kontrola roka
 
 **Klik na notifikaciju (mobilni) — uzrok i lek.** Klik ranije „ništa nije radio" / „ekran blinke pa ništa". Dva uzroka, oba rešena u `sw.js`:
