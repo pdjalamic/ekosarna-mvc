@@ -24,15 +24,16 @@ $uid = \Core\Auth::id();
 $db  = \Core\Database::get();
 
 try {
-    // 1. Neprocitane inbox poruke
+    // 1. Neprocitane chat poruke (nova logika: poruke_procitano po razgovoru; grupa = sag 0)
     $stmt = $db->prepare("
-        SELECT COUNT(*) FROM poruke
-        WHERE (primalac_id = ? OR primalac_id IS NULL)
-          AND posiljalac_id != ?
-          AND procitano = 0
-          AND roditelj_id IS NULL
+        SELECT COUNT(*) FROM poruke p
+        LEFT JOIN poruke_procitano pp
+          ON pp.korisnik_id=? AND pp.sagovornik_id=IF(p.primalac_id IS NULL,0,p.posiljalac_id)
+        WHERE p.tip='poruka' AND p.roditelj_id IS NULL AND p.posiljalac_id!=?
+          AND (p.primalac_id=? OR p.primalac_id IS NULL)
+          AND (pp.procitano_do IS NULL OR p.created_at > pp.procitano_do)
     ");
-    $stmt->execute([$uid, $uid]);
+    $stmt->execute([$uid, $uid, $uid]);
     $neprocitane_poruke = (int)$stmt->fetchColumn();
 
     // 2. Sve stavke gde korisnik ima pristup (pisao ili radnik)

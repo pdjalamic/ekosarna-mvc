@@ -12,29 +12,168 @@ class PorukeController extends \Core\Controller
         Auth::requireLogin();
         $this->db = \Core\Database::get();
 
-        $view = $_GET['view'] ?? '';
-        $tab  = $_GET['tab']  ?? 'inbox';
-
-        // Posebni view-ovi
-        if ($view === 'thread')        { $this->thread(); return; }
-        if ($view === 'nova')          { $this->nova(); return; }
-        if ($view === 'nova_zadatak')  { $this->novaZadatak(); return; }
-        if ($view === 'nova_nabavka')  { $this->novaNabavka(); return; }
-
         // AJAX akcije
         if (isset($_POST['_poruke_action'])) {
             $this->handleAjax($_POST['_poruke_action']);
             return;
         }
 
-        // Tabovi
-        match ($tab) {
-            'zadaci'    => $this->zadaci(),
-            'nabavka'   => $this->nabavka(),
-            'gradilista' => $this->gradilistaTab(),
-            'izvestaji' => $this->izvestaji(),
-            default     => $this->inbox(),
-        };
+        // Jedini ekran: chat (WhatsApp/Viber stil). Legacy tabovi/forme uklonjeni iz UI;
+        // legacy metode ispod ostaju u fajlu (nedostupne) za svaki slučaj.
+        $this->chat();
+    }
+
+    // ═══════════════════════════════════════
+    // CHAT (novi)
+    // ═══════════════════════════════════════
+    private function chat(): void
+    {
+        $uid = (int)Auth::id();
+
+        $stmt = $this->db->prepare("SELECT id, ime, uloga FROM admin_korisnici WHERE aktivan=1 AND id!=? ORDER BY ime");
+        $stmt->execute([$uid]);
+        $clanovi = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        $razgovori = $this->getRazgovori($uid);
+
+        // Otvori odmah (iz notifikacije): ?grupa=1 ili ?sa=<id>
+        $otvori = null;
+        if (isset($_GET['grupa']))     $otvori = 0;
+        elseif (isset($_GET['sa']))    $otvori = (int)$_GET['sa'];
+
+        $this->view('poruke/inbox', compact('uid', 'clanovi', 'razgovori', 'otvori'));
+    }
+
+    /** Lista razgovora: sag (0=grupa) => poslednja poruka + broj nepročitanih. */
+    private function getRazgovori(int $uid): array
+    {
+        $out = [];
+
+        // Poslednja poruka po razgovoru
+        $stmt = $this->db->prepare("
+            SELECT p.sadrzaj, p.naslov, p.created_at, p.posiljalac_id, pos.ime AS autor_ime,
+                   IF(p.primalac_id IS NULL, 0, IF(p.posiljalac_id=?, p.primalac_id, p.posiljalac_id)) AS sag
+            FROM poruke p
+            JOIN admin_korisnici pos ON pos.id = p.posiljalac_id
+            JOIN (
+                SELECT IF(primalac_id IS NULL, 0, IF(posiljalac_id=?, primalac_id, posiljalac_id)) AS sag, MAX(id) AS maxid
+                FROM poruke
+                WHERE tip='poruka' AND roditelj_id IS NULL
+                  AND (posiljalac_id=? OR primalac_id=? OR primalac_id IS NULL)
+                GROUP BY sag
+            ) t ON p.id = t.maxid
+        ");
+        $stmt->execute([$uid, $uid, $uid, $uid]);
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $sag = (int)$r['sag'];
+            $txt = !empty($r['naslov']) ? ($r['naslov'] . ' ' . $r['sadrzaj']) : $r['sadrzaj'];
+            $out[$sag] = [
+                'unread'        => 0,
+                'sadrzaj'       => mb_substr($txt, 0, 80),
+                'created_at'    => $r['created_at'],
+                'posiljalac_id' => (int)$r['posiljalac_id'],
+                'autor_ime'     => $r['autor_ime'],
+            ];
+        }
+
+        // Nepročitano po razgovoru
+        $u = $this->db->prepare("
+            SELECT IF(p.primalac_id IS NULL, 0, p.posiljalac_id) AS sag, COUNT(*) AS n
+            FROM poruke p
+            LEFT JOIN poruke_procitano pp
+              ON pp.korisnik_id=? AND pp.sagovornik_id=IF(p.primalac_id IS NULL,0,p.posiljalac_id)
+            WHERE p.tip='poruka' AND p.roditelj_id IS NULL AND p.posiljalac_id!=?
+              AND (p.primalac_id=? OR p.primalac_id IS NULL)
+              AND (pp.procitano_do IS NULL OR p.created_at > pp.procitano_do)
+            GROUP BY sag
+        ");
+        $u->execute([$uid, $uid, $uid]);
+        foreach ($u->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            $sag = (int)$r['sag'];
+            if (!isset($out[$sag])) {
+                $out[$sag] = ['unread'=>0,'sadrzaj'=>'','created_at'=>null,'posiljalac_id'=>0,'autor_ime'=>''];
+            }
+            $out[$sag]['unread'] = (int)$r['n'];
+        }
+
+        return $out;
+    }
+
+    /** Poruke jednog razgovora (sag 0 = grupa Ekošarna). */
+    private function getChatPoruke(int $uid, int $sag): array
+    {
+        if ($sag === 0) {
+            $stmt = $this->db->prepare("
+                SELECT p.id, p.sadrzaj, p.naslov, p.created_at, p.posiljalac_id, pos.ime AS autor_ime
+                FROM poruke p JOIN admin_korisnici pos ON pos.id=p.posiljalac_id
+                WHERE p.tip='poruka' AND p.roditelj_id IS NULL AND p.primalac_id IS NULL
+                ORDER BY p.created_at ASC, p.id ASC LIMIT 500
+            ");
+            $stmt->execute();
+        } else {
+            $stmt = $this->db->prepare("
+                SELECT p.id, p.sadrzaj, p.naslov, p.created_at, p.posiljalac_id, pos.ime AS autor_ime
+                FROM poruke p JOIN admin_korisnici pos ON pos.id=p.posiljalac_id
+                WHERE p.tip='poruka' AND p.roditelj_id IS NULL AND p.primalac_id IS NOT NULL
+                  AND ((p.posiljalac_id=? AND p.primalac_id=?) OR (p.posiljalac_id=? AND p.primalac_id=?))
+                ORDER BY p.created_at ASC, p.id ASC LIMIT 500
+            ");
+            $stmt->execute([$uid, $sag, $sag, $uid]);
+        }
+        $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+        foreach ($rows as &$r) {
+            $r['moja'] = ((int)$r['posiljalac_id'] === $uid);
+            if (!empty($r['naslov'])) $r['sadrzaj'] = $r['naslov'] . "\n" . $r['sadrzaj']; // legacy
+        }
+        return $rows;
+    }
+
+    private function oznaciProcitano(int $uid, int $sag): void
+    {
+        $this->db->prepare("
+            INSERT INTO poruke_procitano (korisnik_id, sagovornik_id, procitano_do)
+            VALUES (?, ?, NOW())
+            ON DUPLICATE KEY UPDATE procitano_do = NOW()
+        ")->execute([$uid, $sag]);
+    }
+
+    private function imeKorisnika(int $id): string
+    {
+        $s = $this->db->prepare("SELECT ime FROM admin_korisnici WHERE id=?");
+        $s->execute([$id]);
+        return (string)($s->fetchColumn() ?: '');
+    }
+
+    /** Notifikacija za novu chat poruku (kanalno-svesno + deep-link na razgovor). */
+    private function notifikujChat(int $autor_id, int $sag, string $sadrzaj): void
+    {
+        try {
+            $autorIme = $this->imeKorisnika($autor_id);
+            $excerpt  = mb_substr($sadrzaj, 0, 80);
+
+            if ($sag === 0) {
+                $ids = $this->db->prepare("SELECT id FROM admin_korisnici WHERE aktivan=1 AND id!=?");
+                $ids->execute([$autor_id]);
+                $primaoci = array_map('intval', $ids->fetchAll(\PDO::FETCH_COLUMN));
+                $q = '&grupa=1';
+                $title = '💬 Ekošarna (grupa)';
+                $body  = $autorIme . ': ' . $excerpt;
+            } else {
+                $primaoci = [$sag];
+                $q = '&sa=' . $autor_id;       // primalac otvara razgovor sa pošiljaocem
+                $title = '💬 ' . $autorIme;
+                $body  = $excerpt;
+            }
+            if (!$primaoci) return;
+
+            PushController::notifyKanali($primaoci, [
+                'title' => $title,
+                'body'  => $body,
+                'url'   => '/mvc/?page=poruke' . $q,
+                'tag'   => 'poruka-' . ($sag === 0 ? 'grupa' : $autor_id),
+                'icon'  => '/mvc/public/icon-192.png',
+            ], $title . "\n" . $body . "\n\nhttps://ekosarna.com/mvc/?page=poruke" . $q);
+        } catch (\Throwable $e) {}
     }
 
     // ═══════════════════════════════════════
@@ -397,7 +536,40 @@ class PorukeController extends \Core\Controller
     private function handleAjax(string $action): void
     {
         header('Content-Type: application/json');
-        $id = (int)($_POST['id'] ?? 0);
+        $uid = (int)Auth::id();
+        $id  = (int)($_POST['id'] ?? 0);
+
+        // ── Chat ──
+        if ($action === 'poruke_konverzacije') {
+            echo json_encode(['ok' => true, 'razgovori' => $this->getRazgovori($uid)]);
+            exit;
+        }
+        if ($action === 'poruke_thread') {
+            $sag = (int)($_POST['sa'] ?? -1);
+            if ($sag < 0) { echo json_encode(['ok' => false]); exit; }
+            $poruke = $this->getChatPoruke($uid, $sag);
+            $this->oznaciProcitano($uid, $sag);
+            echo json_encode(['ok' => true, 'poruke' => $poruke]);
+            exit;
+        }
+        if ($action === 'poruke_send') {
+            $sag     = (int)($_POST['sa'] ?? -1);
+            $sadrzaj = trim($_POST['sadrzaj'] ?? '');
+            if ($sag < 0 || $sadrzaj === '') { echo json_encode(['ok' => false, 'err' => 'Prazna poruka.']); exit; }
+            $primalac = ($sag === 0) ? null : $sag;
+            $this->db->prepare("INSERT INTO poruke (posiljalac_id, primalac_id, naslov, sadrzaj, tip) VALUES (?,?,?,?,'poruka')")
+                     ->execute([$uid, $primalac, '', $sadrzaj]);
+            $this->oznaciProcitano($uid, $sag);          // pošiljalac je „pročitao" svoj razgovor
+            $this->notifikujChat($uid, $sag, $sadrzaj);
+            echo json_encode(['ok' => true]);
+            exit;
+        }
+        if ($action === 'poruke_seen') {
+            $sag = (int)($_POST['sa'] ?? -1);
+            if ($sag >= 0) $this->oznaciProcitano($uid, $sag);
+            echo json_encode(['ok' => true]);
+            exit;
+        }
 
         if ($action === 'promeni_status') {
             if (!Auth::isAdmin()) { echo json_encode(['ok' => false]); exit; }
@@ -479,14 +651,17 @@ class PorukeController extends \Core\Controller
     {
         try {
             $db   = \Core\Database::get();
+            // Nepročitane = poruke tuđeg autora (meni ili grupi) sa created_at > „pročitano do"
+            // za taj razgovor (poruke_procitano: sagovornik 0 = grupa).
             $stmt = $db->prepare("
-                SELECT COUNT(*) FROM poruke
-                WHERE (primalac_id = ? OR primalac_id IS NULL)
-                  AND posiljalac_id != ?
-                  AND procitano = 0
-                  AND roditelj_id IS NULL
+                SELECT COUNT(*) FROM poruke p
+                LEFT JOIN poruke_procitano pp
+                  ON pp.korisnik_id=? AND pp.sagovornik_id=IF(p.primalac_id IS NULL,0,p.posiljalac_id)
+                WHERE p.tip='poruka' AND p.roditelj_id IS NULL AND p.posiljalac_id!=?
+                  AND (p.primalac_id=? OR p.primalac_id IS NULL)
+                  AND (pp.procitano_do IS NULL OR p.created_at > pp.procitano_do)
             ");
-            $stmt->execute([$uid, $uid]);
+            $stmt->execute([$uid, $uid, $uid]);
             return (int)$stmt->fetchColumn();
         } catch (\Throwable $e) {
             return 0;

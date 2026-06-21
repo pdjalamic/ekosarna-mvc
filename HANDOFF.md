@@ -4,6 +4,7 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + deploy + test preostaju
 0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · ✅ radi, komitovano (`bdfdd9a`), na produkciji
 000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji
 00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · ✅ radi, komitovano (`44ae11e`), na produkciji
@@ -15,6 +16,36 @@
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## P. Poruke — redizajn u chat (WhatsApp/Viber stil)
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL + deploy + test PREOSTAJE.**
+
+### Cilj
+„Poruke" su imale legacy tabove (Inbox/Zadaci/Nabavka/Gradilišta/Izveštaji) koji zbunjuju — ostatak od ranije; prave funkcije su odavno na zasebnim stranicama (Zadaci=`interni_zadaci`, Nabavka=`nabavka_zahtevi`, Gradilišta=`GradilistaController`). Traženo: obične poruke kao Viber/WhatsApp — pošalji članu Tima ili **grupi „Ekošarna" (svi)**, vidi sve prepiske, notifikacija preko kanala (web/Android push, iOS Telegram), klik otvara baš tu prepisku.
+
+### Odluke (potvrđeno)
+Grupa „Ekošarna" = **pravi grupni chat** (svako piše, svi vide). Legacy poruke u bazi i legacy view fajlovi **ostaju** (ne brišu se; samo se ne rutiraju).
+
+### Model (reupotreba `poruke` tabele)
+Poruka = red `tip='poruka'`, `roditelj_id` NULL, `posiljalac_id`=autor, `primalac_id`=osoba **ili NULL = grupa**. Razgovor sa X = sve gde (ja↔X). Grupa = sve `primalac_id IS NULL`. Nepročitano preko nove tabele `poruke_procitano(korisnik_id, sagovornik_id, procitano_do)` (sagovornik 0 = grupa) — isti obrazac kao `raspored_vidjeno`.
+
+### Izmenjeni / novi fajlovi
+| Fajl | Izmena |
+|---|---|
+| `poruke_chat.sql` | **NOV.** `CREATE TABLE IF NOT EXISTS poruke_procitano`. Idempotentno. **Pokrenuti JEDNOM PRE deploya.** |
+| `app/Controllers/PorukeController.php` | `dispatch()` → samo `chat()`; nove metode `getRazgovori/getChatPoruke/oznaciProcitano/notifikujChat`; AJAX `poruke_konverzacije/_thread/_send/_seen`; `neprocitane()` na novu logiku. Notifikacija preko `PushController::notifyKanali` + deep-link `?page=poruke&sa=<id>`/`&grupa=1`. **Legacy metode ostavljene u fajlu (nedostupne).** |
+| `app/Views/poruke/inbox.php` | **Rewrite** u chat UI (lista razgovora: grupa „🏢 Ekošarna" + članovi; prepiska + mehurići + slanje; responsivno web/mob; poll 10s; deep-link auto-otvara razgovor). |
+| `check_notifications.php` | Upit nepročitanih (poll 10s za badge/toast) usklađen sa novom `poruke_procitano` logikom. |
+
+### Napomene
+- Prvi ulazak: stare broadcast/direktne poruke bez `poruke_procitano` reda broje se kao nepročitane (badge može biti veći) — očisti se čim se razgovor otvori. Ako smeta, seed-ovati `procitano_do=NOW()` za sve pri deployu.
+- `sw.js` se ne menja — deep-link `?page=poruke&...` se normalizuje i otvara razgovor.
+
+### Deploy
+1. Pokreni `poruke_chat.sql` na produkciji. 2. Upload `PorukeController.php`, `app/Views/poruke/inbox.php`, `check_notifications.php`. 3. Test: pošalji članu i grupi → primaoci dobiju notifikaciju (web/Android/iOS) → klik otvara prepisku → odgovore → svi vide. Badge/nepročitano radi.
 
 ---
 
