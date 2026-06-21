@@ -4,7 +4,7 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + deploy + test preostaju
+P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · ✅ radi, komitovano (`3cd6738`), na produkciji
 0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · ✅ radi, komitovano (`bdfdd9a`), na produkciji
 000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji
 00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · ✅ radi, komitovano (`44ae11e`), na produkciji
@@ -21,7 +21,7 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 
 ## P. Poruke — redizajn u chat (WhatsApp/Viber stil)
 
-**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL + deploy + test PREOSTAJE.**
+**Datum:** 2026-06-21 · **Status:** ✅ radi (web/Android/iOS), komitovano (`3cd6738`), na produkciji (SQL pokrenut).
 
 ### Cilj
 „Poruke" su imale legacy tabove (Inbox/Zadaci/Nabavka/Gradilišta/Izveštaji) koji zbunjuju — ostatak od ranije; prave funkcije su odavno na zasebnim stranicama (Zadaci=`interni_zadaci`, Nabavka=`nabavka_zahtevi`, Gradilišta=`GradilistaController`). Traženo: obične poruke kao Viber/WhatsApp — pošalji članu Tima ili **grupi „Ekošarna" (svi)**, vidi sve prepiske, notifikacija preko kanala (web/Android push, iOS Telegram), klik otvara baš tu prepisku.
