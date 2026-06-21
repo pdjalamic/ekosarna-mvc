@@ -34,9 +34,12 @@ try {
         $payload = [
             'title' => '⏰ Zadatak ističe sutra',
             'body'  => mb_substr($row['zadatak_tekst'], 0, 100) . (mb_strlen($row['zadatak_tekst']) > 100 ? '...' : ''),
-            'url'   => BASE_URL . '/?page=zadaci',
+            // VAŽNO: putanja nezavisna od hosta (sw.js je re-bazira na origin), NE BASE_URL —
+            // ovaj cron je CLI gde je BASE_URL pogrešan ($_SERVER nema host/script) → klik bi vodio na 404.
+            // App je uvek pod /mvc; &openz otvara baš taj zadatak proširen.
+            'url'   => '/mvc/?page=zadaci&openz=' . $row['zadatak_id'],
             'tag'   => 'zadatak-' . $row['zadatak_id'],
-            'icon'  => BASE_URL . '/public/icon-192.png',
+            'icon'  => '/mvc/public/icon-192.png',
         ];
 
         // Preskoči iOS — šalji email

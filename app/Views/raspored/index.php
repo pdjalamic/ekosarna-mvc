@@ -398,6 +398,7 @@ var _rsPorukStavkaId = 0;
 var _rsPorukeInterval = null;
 var _rsPendingData   = null;
 var _rsVremena       = {};
+var _rsOdgovoranTrenutni = 0; // trenutno izabran odgovoran (da se zadrži u meniju i kad je „vođa" zauzeta)
 
 function osveziDodajMeni() {
     var sel = document.getElementById('rs-dodaj-radnika');
@@ -467,22 +468,41 @@ function azurirajOdgovornaSelect() {
     var trenutni = sel.value;
 
     sel.innerHTML = '<option value="">— Niko nije određen —</option>';
+    var dodati = {}; // id -> true (bez duplikata)
+
+    function dodajOpciju(e, ikona) {
+        if (!e || dodati[e.id]) return;
+        var opt = document.createElement('option');
+        opt.value = e.id;
+        opt.textContent = ikona + ' ' + e.ime;
+        sel.appendChild(opt);
+        dodati[e.id] = true;
+    }
+
+    // 1) Radnici dodati na ovaj zadatak
     var rows = document.querySelectorAll('#rs-ekipa-lista .rs-el-row');
     rows.forEach(function(r) {
-        var e = _rsElektricari.find(function(x) { return x.id == r.dataset.id; });
-        if (e) {
-            var opt = document.createElement('option');
-            opt.value = e.id;
-            opt.textContent = '👷 ' + e.ime;
-            sel.appendChild(opt);
-        }
+        dodajOpciju(_rsElektricari.find(function(x) { return x.id == r.dataset.id; }), '👷');
     });
 
-    if (trenutni && document.getElementById('rs-el-' + trenutni)) {
+    // 2) Vođe (Inženjer/Rukovodilac/Poslovođa/Zamenik) — UVEK, osim ako su zauzete
+    //    na DRUGOM zadatku istog dana (_rsVremena ne sadrži ovu stavku).
+    _rsElektricari.forEach(function(e) {
+        if (!e.vodja || dodati[e.id]) return;
+        if (_rsVremena[e.id]) return; // zauzet na drugom zadatku tog dana
+        dodajOpciju(e, '🛠️');
+    });
+
+    // 3) Trenutno izabran odgovoran — uvek zadrži u meniju (čak i ako je „vođa" zauzeta)
+    if (_rsOdgovoranTrenutni) {
+        dodajOpciju(_rsElektricari.find(function(x) { return x.id == _rsOdgovoranTrenutni; }), '🛠️');
+    }
+
+    if (trenutni && dodati[trenutni]) {
         sel.value = trenutni;
     }
 
-    wrap.style.display = rows.length > 0 ? 'block' : 'none';
+    wrap.style.display = Object.keys(dodati).length > 0 ? 'block' : 'none';
 }
 
 function resetModal() {
@@ -494,6 +514,7 @@ function resetModal() {
     document.getElementById('rs-odgovoran-id').value = '';
     document.getElementById('rs-odgovoran-wrap').style.display = 'none';
     _rsVremena = {};
+    _rsOdgovoranTrenutni = 0;
     document.getElementById('rs-ekipa-lista').innerHTML = '';
     osveziDodajMeni();
 }
@@ -532,9 +553,8 @@ function openDodajStavku(datum, danId, danIndex) {
     fetch('', { method: 'POST', body: fd })
     .then(r => r.json())
     .then(d => {
-        if (d.ok && d.vremena) {
-            _rsVremena = d.vremena;
-        }
+        _rsVremena = (d.ok && d.vremena) ? d.vremena : {};
+        azurirajOdgovornaSelect(); // vođe se vide i pre dodavanja radnika
     });
 
     document.getElementById('rs-modal').style.display = 'flex';
@@ -557,6 +577,8 @@ function openIzmeniStavku(stavkaId, danIndex) {
         document.getElementById('rs-opis').value      = s.opis || '';
         document.getElementById('rs-dan-id').value    = s.dan_id || '';
 
+        _rsOdgovoranTrenutni = s.odgovoran_id || 0;
+
         (s.radnici || []).forEach(function(r) {
             dodajRadnika(
                 r.radnik_id,
@@ -565,13 +587,33 @@ function openIzmeniStavku(stavkaId, danIndex) {
             );
         });
 
-        // Postavi odgovornog nakon što su radnici dodati
-        azurirajOdgovornaSelect();
-        if (s.odgovoran_id) {
-            document.getElementById('rs-odgovoran-id').value = s.odgovoran_id;
+        // Prikaži zapamćeni izbor obaveštenja (odmah / zakazano+vreme / ne)
+        var tip = s.obavesti_tip || 'odmah';
+        var radio = document.querySelector('input[name="rs_obavesti"][value="' + tip + '"]');
+        if (radio) radio.checked = true;
+        if (tip === 'zakazano' && s.obavesti_at) {
+            document.getElementById('rs-obavesti-datetime').value = s.obavesti_at;
+            document.getElementById('rs-obavesti-dt').style.display = 'block';
+        } else {
+            document.getElementById('rs-obavesti-dt').style.display = 'none';
         }
 
-        document.getElementById('rs-modal').style.display = 'flex';
+        // Učitaj zauzeća dana BEZ ove stavke, pa izgradi meni odgovornog (vođe minus zauzeti)
+        var fdv = new FormData();
+        fdv.append('_action', 'raspored_vreme_elektricara');
+        fdv.append('dan_id', s.dan_id || '');
+        fdv.append('iskljuci_stavku', stavkaId);
+        fdv.append('id', 0);
+        fetch('', { method: 'POST', body: fdv })
+        .then(r => r.json())
+        .then(dv => {
+            _rsVremena = (dv.ok && dv.vremena) ? dv.vremena : {};
+            azurirajOdgovornaSelect();
+            if (s.odgovoran_id) {
+                document.getElementById('rs-odgovoran-id').value = s.odgovoran_id;
+            }
+            document.getElementById('rs-modal').style.display = 'flex';
+        });
     });
 }
 

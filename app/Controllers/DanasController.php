@@ -41,6 +41,8 @@ while ($dodato < 4) {
 
         $dani = [];
         foreach ($datumi as $d) {
+            // Prikaži zadatak ako je korisnik RADNIK na njemu ILI je „odgovoran za unos
+            // materijala" (i ako nije radnik). Nacrti se ne prikazuju (samo objavljeno).
             $stmt = $this->db->prepare("
                 SELECT rs.*,
                        g.naziv AS gradiliste_naziv,
@@ -49,16 +51,18 @@ while ($dodato < 4) {
                        rr.vreme_od,
                        rr.vreme_do,
                        ko.ime AS odgovoran_ime
-                FROM raspored_radnici rr
-                JOIN raspored_stavke rs  ON rr.stavka_id = rs.id
+                FROM raspored_stavke rs
                 JOIN raspored_dani rd    ON rs.dan_id = rd.id
                 JOIN radne_nedelje rn    ON rd.nedelja_id = rn.id
+                LEFT JOIN raspored_radnici rr ON rr.stavka_id = rs.id AND rr.radnik_id = ?
                 LEFT JOIN gradilista g   ON rs.gradiliste_id = g.id
                 LEFT JOIN admin_korisnici ko ON rs.odgovoran_id = ko.id
-                WHERE rr.radnik_id = ? AND rd.datum = ?
+                WHERE rd.datum = ?
+                  AND rs.status = 'objavljeno'
+                  AND (rr.radnik_id = ? OR rs.odgovoran_id = ?)
                 ORDER BY rr.vreme_od ASC, rs.id ASC
             ");
-            $stmt->execute([$uid, $d]);
+            $stmt->execute([$uid, $d, $uid, $uid]);
             $stavke = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             foreach ($stavke as &$s) {

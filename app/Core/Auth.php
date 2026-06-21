@@ -10,6 +10,10 @@ class Auth
     public const ULOGE_OPERATER   = ['Inženjer na gradilištu', 'Rukovodilac operative', 'Operater'];
     public const ULOGE_ELEKTRICAR = ['Monter poslovođa', 'Zamenik montera poslovođe', 'Monter', 'Pomoćni radnik', 'Elektricar'];
 
+    // Uloge koje su UVEK ponuđene u padajućem meniju „odgovoran za unos materijala"
+    // na rasporedu (vođe/rukovodioci), nezavisno od toga ko je dodat na zadatak.
+    public const ULOGE_ODGOVORAN_MAT = ['Inženjer na gradilištu', 'Rukovodilac operative', 'Monter poslovođa', 'Zamenik montera poslovođe'];
+
     // "Zapamti me" — trajni token (selector:validator) u kolačiću; u bazi se čuva
     // samo hash validatora. Omogućava tihu ponovnu prijavu na telefonu/PWA.
     public const REMEMBER_COOKIE = 'ek_remember';

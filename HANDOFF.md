@@ -4,6 +4,8 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
+0000. [Raspored — zakazano (scheduled) + logo badge](#0000-raspored--zakazano-scheduled--logo-badge)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + cPanel cron + test preostaju
 000. [Raspored — Android push za dodelu (klik otvara Danas)](#000-raspored--android-push-za-dodelu-klik-otvara-danas)  · *2026-06-20* · 🔜 kod gotov + lint OK; test na uređaju preostaje
 00. [Magacin — izmena bez reload-a (osveži samo red)](#00-magacin--izmena-bez-reload-a-osvezi-samo-red)  · *2026-06-20* · ✅ test prošao, komitovano, na produkciji
 0. [Raspored — nacrt (draft) pre objave](#0-raspored--nacrt-draft-pre-objave)  · *2026-06-20* · 🔜 kod gotov + lint OK; SQL i test na produkciji preostaju
@@ -11,6 +13,74 @@
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## 00000. Raspored — odgovoran za materijal (vođe + notifikacije + Danas)
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez izmene baze.** Test preostaje.
+
+### Traženo (3 stavke)
+1. Kad se neko dodeli na zadatak I označi kao odgovoran za materijal → **jedna** spojena poruka (već radi za jedno snimanje). Skidanje/dodavanje odgovornosti → onaj koga se tiče dobija notifikaciju — **i kad nije radnik** na zadatku.
+2. Padajući meni „odgovoran za materijal" (web+mob): pored dodatih radnika **uvek** ponuditi 4 uloge (Inženjer na gradilištu, Rukovodilac operative, Monter poslovođa, Zamenik montera poslovođe), osim ako su **zauzete na drugom zadatku istog dana**.
+3. Osoba koja je odgovoran a nije radnik **vidi** zadatak na „Danas" (da unese materijal) + dobije notifikaciju da je određena.
+
+### Izmenjeni fajlovi (4) — bez SQL-a
+| Fajl | Izmena |
+|---|---|
+| `app/Core/Auth.php` | Nova konstanta `ULOGE_ODGOVORAN_MAT` (4 „vođe") — jedini izvor istine, ne hardkoduje se po view-u. |
+| `app/Controllers/RasporedController.php` | `index()` označi `vodja` flag na listi. `raspored_vreme_elektricara` prima `iskljuci_stavku` (zauzetost na DRUGOM zadatku istog dana). Notifikacije: dodaj/izmena/brisanje/objava sada obaveste i **ne-radnika** odgovornog (određen/skinut/otkazan), bez duplikata za radnike. Helperi `obavestiIliZakazi()`, `porukaOdgovoran()`. Brisanje **nacrta** više ne šalje „otkazan" (ekipa ga nije ni videla). |
+| `app/Controllers/DanasController.php` | „Danas" upit: prikaži stavku ako je korisnik radnik **ILI** `odgovoran_id` (LEFT JOIN radnika); + filter `status='objavljeno'` (nacrti se ne prikazuju). |
+| `app/Views/raspored/index.php` | `azurirajOdgovornaSelect`: radnici (👷) + vođe (🛠️, osim zauzetih) + uvek zadrži trenutno izabranog; wrap se vidi i bez radnika. `openDodajStavku`/`openIzmeniStavku` učitaju zauzeća dana (izmena: bez svoje stavke) pa grade meni. |
+
+### Napomena o „dve poruke + 10 min"
+Nije postojala zasebna „odgovoran" notifikacija — dve poruke su nastajale kad se odgovornost doda **naknadno, drugim editovanjem** (razmak = vreme između snimanja). Jedno snimanje = jedna spojena poruka.
+
+### Deploy (bez baze)
+Uploaduj `app/Core/Auth.php`, `app/Controllers/RasporedController.php`, `app/Controllers/DanasController.php`, `app/Views/raspored/index.php`. Test: meni odgovornog nudi vođe (i bez radnika); izaberi vođu koja nije radnik → ona dobije „Određen si…", vidi zadatak na „Danas", može da unese materijal; skini je → dobije „Više nisi…".
+
+---
+
+## 0000. Raspored — zakazano (scheduled) + logo badge
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **SQL + cPanel cron + test PREOSTAJE.**
+
+### #4 — „Zakaži obaveštenje" sada radi (pravi uzrok nađen)
+Tabela `raspored_obavestenja` je čuvala **samo** `nedelja_id+send_at` — bez primaoca i bez teksta — a **nijedan cron je nije čitao** (`grep`: pisana na 1 mestu, čitana nigde). Zato zakazano slanje nikad nije odlazilo (npr. zakazano uveče za 07:00). Plus: `datetime-local` daje `...T07:00`, a MariaDB traži razmak.
+
+**Popravka:**
+| Fajl | Izmena |
+|---|---|
+| `raspored_zakazano.sql` | **NOV.** `ADD COLUMN IF NOT EXISTS stavka_id, radnik_id, poruka, datum` u `raspored_obavestenja` + indeks `(poslato, send_at)`. Idempotentno (MariaDB). **Pokrenuti JEDNOM na produkciji PRE deploya.** |
+| `app/Controllers/RasporedController.php` | `zakaziObavestenje()` puni nove kolone + normalizuje `T→razmak`/+sekunde + prima `$datum`; svi pozivi (dodaj/izmena ×2) prosleđuju datum. Novi **javni** `posaljiZakazane()` šalje dospele (`poslato=0 AND send_at<=NOW()`), markira `poslato=1`. |
+| `raspored_cron.php` | **NOV.** Bootstrap kao `push_cron.php`; zove `(new RasporedController())->posaljiZakazane()`; loguje u `logs/raspored_cron.log`. |
+| `htaccess` | Dodat izuzetak `RewriteRule ^raspored_cron\.php$ - [L]` (doslednost; CLI cron ga ionako ne traži). |
+
+**cPanel cron (OBAVEZNO — bez ovoga zakazano ne radi):**
+```
+Minute: */5  Hour: *  Day: *  Month: *  Weekday: *
+Command: /usr/local/bin/php /home/CPANEL_USER/public_html/mvc/raspored_cron.php
+```
+(zameni `CPANEL_USER` pravim nalogom; proveri putanju kao kod `push_cron.php`).
+
+**Deploy redosled:** 1) `raspored_zakazano.sql` na produkciji. 2) Upload `RasporedController.php` + `raspored_cron.php` + `htaccess`. 3) Dodaj cron. 4) Test: zadaj stavku sa „Zakaži obaveštenje" za +5 min → posle cron ciklusa stigne push/Telegram; log u `logs/raspored_cron.log`.
+
+#### Update 2026-06-21 (posle prvog testa) — 2 ispravke
+- **Klik na zakazanu notifikaciju → 404 (rešeno).** Zakazane šalje cron (CLI) gde `BASE_URL` (auto-detect iz `$_SERVER`) ispadne smeće (`http://localhost/home/.../mvc`), pa je klik vodio na `ekosarna.com/home/.../mvc/...` = 404. `notifikuj()` sada šalje **putanju nezavisnu od hosta** (`/mvc/?page=danas...` i `icon` `/mvc/public/...`) — sw.js je re-bazira na origin. Radi i za trenutno i za zakazano. **Isti bug ispravljen i u `push_cron.php`** (dnevni podsetnik Zadataka 08:00): `url` → `/mvc/?page=zadaci&openz=<id>` (klik otvara baš taj zadatak), `icon` → `/mvc/public/...`.
+- **Izmena stavke sada pokazuje da je slanje zakazano (rešeno).** `raspored_get_stavku` vraća `zakazano_at` (najraniji neposlati `send_at`, format `datetime-local`); `openIzmeniStavku` pre-selektuje radio „Zakaži obaveštenje" + popuni vreme. Uz to: izmena i brisanje stavke **otkažu** ranije zakazane (neposlate) za tu stavku (`DELETE ... poslato=0`) — bez duplikata i bez slanja poruke o već obrisanom/izmenjenom zadatku.
+
+#### Update 2026-06-21 (varijanta B) — nacrt pamti izbor obaveštenja, šalje tek na „Objavi"
+Ranije je nacrt forsirao „ne obaveštavaj" pa se uneto zakazано vreme **tiho gubilo** (pri izmeni se nije videlo). Naručilac bira **B**: nacrt **pamti** izbor (odmah/zakazano+vreme/ne) ali **NIŠTA ne šalje/zakazuje dok se ručno ne klikne „Objavi"** (tek tada — odmah ili za to vreme). Razlog: ne sme da „odleti" nešto što se ne očekuje sa drafta.
+| Fajl | Izmena |
+|---|---|
+| `raspored_draft_obavesti.sql` | **NOV.** `ADD COLUMN IF NOT EXISTS obavesti_tip ENUM('odmah','zakazano','ne'), obavesti_at DATETIME` na `raspored_stavke`. Idempotentno. **Pokrenuti JEDNOM na produkciji PRE deploya.** |
+| `app/Controllers/RasporedController.php` | Dodaj/izmena: čuva `obavesti_tip`+`obavesti_at` (izbor korisnika), ali za **nacrt** je stvarno slanje `'ne'` (ne šalje/ne zakazuje). `objaviStavkuInterno()` na „Objavi" poštuje zapamćeni izbor (ne → bez obaveštenja; zakazano+buduće → zakaži; inače → odmah). `get_stavku` vraća `obavesti_tip`+`obavesti_at` (objavljeno sa neposlatim zakazanim je merodavno). Novi helper `normDatetime()`. |
+| `app/Views/raspored/index.php` | `openIzmeniStavku` postavlja radio po `obavesti_tip` (sva 3 stanja) + vreme za zakazano. |
+
+**Deploy:** 1) `raspored_draft_obavesti.sql` na produkciji. 2) Upload `RasporedController.php` + `raspored/index.php`. 3) Test: napravi nacrt sa „Zakaži obaveštenje"+vreme → ekipa NIŠTA ne dobije; izmeni nacrt → vreme se vidi; „Objavi" → tek tada se zakaže za to vreme i odleti kroz cron.
+
+### #5 — Logo silueta u statusnoj traci (badge)
+Statusna traka na Androidu uvek prikazuje **belu siluetu** (OS pravilo, ne naš kod) — boja je nemoguća; pun logo u boji se vidi tek kad se notifikacija razvuče (`icon-192`). Napravljena čistija bela silueta pravog logoa (zakošeno „E" sa nodovima) iz `icon-192` → `public/badge-72.png` (96×96, belo na providnom). `sw.js` ga već koristi kao podrazumevani `badge` → primenjuje se na SVE push notifikacije bez izmene koda. **Deploy:** upload `public/badge-72.png`; vidi se na sledećoj notifikaciji (nije keširan kao `sw.js`).
 
 ---
 

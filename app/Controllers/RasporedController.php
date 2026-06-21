@@ -131,12 +131,17 @@ class RasporedController extends \Core\Controller
         $uloge_raspored = array_merge(Auth::ULOGE_OPERATER, Auth::ULOGE_ELEKTRICAR);
         $ph_elektricar = implode(',', array_fill(0, count($uloge_raspored), '?'));
         $stmt_elektricari = $this->db->prepare("
-            SELECT id, ime FROM admin_korisnici
+            SELECT id, ime, uloga FROM admin_korisnici
             WHERE uloga IN ($ph_elektricar) AND aktivan = 1
             ORDER BY ime
         ");
         $stmt_elektricari->execute($uloge_raspored);
         $elektricari = $stmt_elektricari->fetchAll(\PDO::FETCH_ASSOC);
+        // Označi „vođe" (uvek ponuđene za odgovornog za materijal, i kad nisu na zadatku).
+        foreach ($elektricari as &$_e) {
+            $_e['vodja'] = in_array($_e['uloga'], Auth::ULOGE_ODGOVORAN_MAT, true) ? 1 : 0;
+        }
+        unset($_e);
 
         $gradilista = \Controllers\GradilistaController::getAktivna();
 
@@ -197,12 +202,15 @@ class RasporedController extends \Core\Controller
                 $gradiliste_id = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
                 $opis          = trim($_POST['opis'] ?? '');
                 $radnici_data  = json_decode($_POST['radnici_json'] ?? '[]', true);
-                $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
-                $obavesti_at   = $_POST['obavesti_at'] ?? null;
+                $izborTip      = in_array($_POST['obavesti_tip'] ?? 'odmah', ['odmah','zakazano','ne'], true) ? $_POST['obavesti_tip'] : 'odmah';
+                $obavesti_at   = $this->normDatetime((string)($_POST['obavesti_at'] ?? ''));
+                $obavesti_at_store = ($izborTip === 'zakazano') ? $obavesti_at : null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
                 $odgovoran_ime = $this->imeRadnika($odgovoran_id);
                 $status        = (($_POST['status'] ?? '') === 'nacrt') ? 'nacrt' : 'objavljeno';
-                if ($status === 'nacrt') $obavesti_tip = 'ne'; // nacrt = ekipa se NE obaveštava
+                // Nacrt PAMTI izbor ($izborTip se upisuje u stavku) ali NE šalje/zakazuje sada
+                // → za stvarno slanje koristimo $obavesti_tip='ne'. Šalje tek „Objavi".
+                $obavesti_tip  = ($status === 'nacrt') ? 'ne' : $izborTip;
 
                 if (!$dan_id) $this->json(['ok' => false, 'err' => 'Nema dana.']);
 
@@ -224,18 +232,21 @@ class RasporedController extends \Core\Controller
                 $redosled = (int)$stmt->fetchColumn();
 
                 $stmt = $this->db->prepare("
-                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
+                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status, obavesti_tip, obavesti_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id, $status]);
+                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id, $status, $izborTip, $obavesti_at_store]);
                 $stavka_id = $this->db->lastInsertId();
 
-                $upozorenja = [];
+                $datum_fmt   = $danInfo ? date('d.m.Y', strtotime($danInfo['datum'])) : '';
+                $upozorenja  = [];
+                $radnik_ids  = [];
                 foreach ($radnici_data as $r) {
                     $radnik_id = (int)($r['id'] ?? 0);
                     $vreme_od  = $r['vreme_od'] ?? null;
                     $vreme_do  = $r['vreme_do'] ?? null;
                     if (!$radnik_id) continue;
+                    $radnik_ids[] = $radnik_id;
 
                     // Proveri preklapanje
                     $overlap = $this->proveritPreklapanje($radnik_id, $dan_id, $stavka_id, $vreme_od, $vreme_do);
@@ -256,7 +267,6 @@ class RasporedController extends \Core\Controller
                     $stmt->execute([$stavka_id, $radnik_id, $vreme_od ?: null, $vreme_do ?: null]);
 
                     // Obaveštenje
-                    $datum_fmt = date('d.m.Y', strtotime($danInfo['datum']));
                     $jeOdgovoran = ($odgovoran_id && $odgovoran_id === $radnik_id);
                     $poruka = "📋 Dodeljen si na zadatak: {$opis}\n🏗️ Gradilište: {$gNaziv}\n📅 Datum: {$datum_fmt}\n🕐 Vreme: " . substr($vreme_od,0,5) . " – " . substr($vreme_do,0,5);
                     if ($jeOdgovoran) {
@@ -268,8 +278,14 @@ class RasporedController extends \Core\Controller
                     if ($obavesti_tip === 'odmah') {
                         $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danInfo['datum'] ?? '', $stavka_id);
                     } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
-                        $this->zakaziObavestenje($stavka_id, $radnik_id, $poruka, $obavesti_at);
+                        $this->zakaziObavestenje($stavka_id, $radnik_id, $poruka, $obavesti_at, $danInfo['datum'] ?? '');
                     }
+                }
+
+                // Odgovoran za materijal koji NIJE radnik na zadatku — zasebno obaveštenje (jednom).
+                if ($odgovoran_id && !in_array($odgovoran_id, $radnik_ids, true)) {
+                    $pO = $this->porukaOdgovoran(true, $opis, $gNaziv, $datum_fmt);
+                    $this->obavestiIliZakazi($obavesti_tip, $obavesti_at, $stavka_id, $odgovoran_id, $pO, $danInfo['datum'] ?? '');
                 }
 
                 $this->json(['ok' => true, 'stavka_id' => $stavka_id, 'upozorenja' => $upozorenja]);
@@ -279,12 +295,14 @@ class RasporedController extends \Core\Controller
                 $gradiliste_id = (int)($_POST['gradiliste_id'] ?? 0) ?: null;
                 $opis          = trim($_POST['opis'] ?? '');
                 $radnici_novi  = json_decode($_POST['radnici_json'] ?? '[]', true);
-                $obavesti_tip  = $_POST['obavesti_tip'] ?? 'odmah';
-                $obavesti_at   = $_POST['obavesti_at'] ?? null;
+                $izborTip      = in_array($_POST['obavesti_tip'] ?? 'odmah', ['odmah','zakazano','ne'], true) ? $_POST['obavesti_tip'] : 'odmah';
+                $obavesti_at   = $this->normDatetime((string)($_POST['obavesti_at'] ?? ''));
+                $obavesti_at_store = ($izborTip === 'zakazano') ? $obavesti_at : null;
                 $odgovoran_id  = (int)($_POST['odgovoran_id'] ?? 0) ?: null;
                 $odgovoran_ime = $this->imeRadnika($odgovoran_id);
                 $status        = (($_POST['status'] ?? '') === 'nacrt') ? 'nacrt' : 'objavljeno';
-                if ($status === 'nacrt') $obavesti_tip = 'ne'; // nacrt = ekipa se NE obaveštava
+                // Nacrt PAMTI izbor ali NE šalje/zakazuje sada (šalje tek „Objavi").
+                $obavesti_tip  = ($status === 'nacrt') ? 'ne' : $izborTip;
 
                 // Staro stanje
                 $staroStmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE id=?");
@@ -318,9 +336,13 @@ class RasporedController extends \Core\Controller
                 $danDatum  = (string)$danStmt->fetchColumn();
                 $datum_fmt = date('d.m.Y', strtotime($danDatum));
 
-                // Ažuriraj stavku (sa odgovoran_id i status)
-                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=?, status=? WHERE id=?");
-                $stmt->execute([$gradiliste_id, $opis, $odgovoran_id, $status, $id]);
+                // Ažuriraj stavku (sa odgovoran_id, status i zapamćenim izborom obaveštenja)
+                $stmt = $this->db->prepare("UPDATE raspored_stavke SET gradiliste_id=?, opis=?, odgovoran_id=?, status=?, obavesti_tip=?, obavesti_at=? WHERE id=?");
+                $stmt->execute([$gradiliste_id, $opis, $odgovoran_id, $status, $izborTip, $obavesti_at_store, $id]);
+
+                // Otkaži ranije ZAKAZANE (još neposlate) za ovu stavku — izbegava duplikate
+                // i zastarele poruke; po izboru ispod se naprave nove.
+                $this->db->prepare("DELETE FROM raspored_obavestenja WHERE stavka_id=? AND poslato=0")->execute([$id]);
 
                 // Nova lista radnika
                 $noviMap = [];
@@ -337,7 +359,7 @@ class RasporedController extends \Core\Controller
                         if ($obavesti_tip === 'odmah') {
                             $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danDatum, $id);
                         } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
-                            $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at);
+                            $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at, $danDatum);
                         }
                     }
                 }
@@ -414,8 +436,21 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                     if ($obavesti_tip === 'odmah') {
                         $this->notifikuj($radnik_id, Auth::ime(), $poruka, $danDatum, $id);
                     } elseif ($obavesti_tip === 'zakazano' && $obavesti_at) {
-                        $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at);
+                        $this->zakaziObavestenje($id, $radnik_id, $poruka, $obavesti_at, $danDatum);
                     }
+                }
+
+                // Promene odgovornosti za osobu koja NIJE radnik u novoj listi.
+                // (Radnici svoju promenu odgovornosti dobijaju kroz gornje poruke.)
+                $staroO = (int)($staro['odgovoran_id'] ?? 0);
+                $noviO  = (int)($odgovoran_id ?? 0);
+                if ($noviO && $noviO !== $staroO && !isset($noviMap[$noviO])) {
+                    $pO = $this->porukaOdgovoran(true, $opis, ($gNovoNaziv ?: $gStaroNaziv), $datum_fmt);
+                    $this->obavestiIliZakazi($obavesti_tip, $obavesti_at, $id, $noviO, $pO, $danDatum);
+                }
+                if ($staroO && $staroO !== $noviO && !isset($noviMap[$staroO]) && !isset($stariRadnici[$staroO])) {
+                    $pO = $this->porukaOdgovoran(false, $staro['opis'], ($gStaroNaziv ?: $gNovoNaziv), $datum_fmt);
+                    $this->obavestiIliZakazi($obavesti_tip, $obavesti_at, $id, $staroO, $pO, $danDatum);
                 }
 
                 $this->json(['ok' => true, 'upozorenja' => $upozorenja]);
@@ -426,16 +461,27 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $staroStmt->execute([$id]);
                 $stavo = $staroStmt->fetch(\PDO::FETCH_ASSOC);
 
-                if ($stavo) {
+                // Obaveštenja o otkazivanju samo za OBJAVLJENE (nacrt ekipa nikad nije ni videla).
+                if ($stavo && ($stavo['status'] ?? 'objavljeno') === 'objavljeno') {
                     $datum_fmt = date('d.m.Y', strtotime($stavo['datum']));
+                    $poruka = "❌ Otkazan zadatak:\n📋 {$stavo['opis']}\n🏗️ {$stavo['gn']}\n📅 {$datum_fmt}";
+                    $radnik_ids = [];
                     $stmt = $this->db->prepare("SELECT radnik_id FROM raspored_radnici WHERE stavka_id=?");
                     $stmt->execute([$id]);
                     foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $radnik_id) {
-                        $poruka = "❌ Otkazan zadatak:\n📋 {$stavo['opis']}\n🏗️ {$stavo['gn']}\n📅 {$datum_fmt}";
-                        $this->notifikuj($radnik_id, Auth::ime(), $poruka, $stavo['datum'] ?? '', $id);
+                        $radnik_ids[] = (int)$radnik_id;
+                        $this->notifikuj((int)$radnik_id, Auth::ime(), $poruka, $stavo['datum'] ?? '', $id);
+                    }
+                    // Odgovoran za materijal koji nije radnik — takođe obavesti o otkazivanju.
+                    $odgO = (int)($stavo['odgovoran_id'] ?? 0);
+                    if ($odgO && !in_array($odgO, $radnik_ids, true)) {
+                        $this->notifikuj($odgO, Auth::ime(), $poruka, $stavo['datum'] ?? '', $id);
                     }
                 }
 
+                // Otkaži eventualne zakazane (neposlate) za ovu stavku — da cron ne pošalje
+                // poruku o već obrisanom zadatku.
+                $this->db->prepare("DELETE FROM raspored_obavestenja WHERE stavka_id=? AND poslato=0")->execute([$id]);
                 $this->db->prepare("DELETE FROM raspored_stavke WHERE id=?")->execute([$id]);
                 $this->json(['ok' => true]);
                 break;
@@ -454,21 +500,35 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 ");
                 $stmt->execute([$id]);
                 $stavka['radnici'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Izbor obaveštenja za modal izmene: zapamćen na stavci; a ako je objavljeno i
+                // ima još NEPOSLATO zakazano (raspored_obavestenja), to je merodavno za prikaz.
+                $tip = $stavka['obavesti_tip'] ?: 'odmah';
+                $at  = $stavka['obavesti_at'] ? date('Y-m-d\TH:i', strtotime($stavka['obavesti_at'])) : '';
+                $zStmt = $this->db->prepare("SELECT MIN(send_at) FROM raspored_obavestenja WHERE stavka_id=? AND poslato=0");
+                $zStmt->execute([$id]);
+                $zSendAt = $zStmt->fetchColumn();
+                if ($zSendAt) { $tip = 'zakazano'; $at = date('Y-m-d\TH:i', strtotime($zSendAt)); }
+                $stavka['obavesti_tip'] = $tip;
+                $stavka['obavesti_at']  = $at;
+
                 $this->json($stavka);
                 break;
 
             case 'raspored_vreme_elektricara':
-                $dan_id = (int)($_POST['dan_id'] ?? 0);
+                $dan_id   = (int)($_POST['dan_id'] ?? 0);
+                $iskljuci = (int)($_POST['iskljuci_stavku'] ?? 0); // pri izmeni: ne računaj sopstvenu stavku
                 if (!$dan_id) $this->json(['ok' => true, 'vremena' => []]);
 
-                $stmt = $this->db->prepare("
+                $sql = "
                     SELECT rr.radnik_id, MAX(rr.vreme_do) AS poslednje_do
                     FROM raspored_radnici rr
                     JOIN raspored_stavke rs ON rr.stavka_id = rs.id
-                    WHERE rs.dan_id = ?
+                    WHERE rs.dan_id = ?" . ($iskljuci ? " AND rs.id != ?" : "") . "
                     GROUP BY rr.radnik_id
-                ");
-                $stmt->execute([$dan_id]);
+                ";
+                $stmt = $this->db->prepare($sql);
+                $stmt->execute($iskljuci ? [$dan_id, $iskljuci] : [$dan_id]);
                 $vremena = [];
                 foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $row) {
                     $vremena[$row['radnik_id']] = $row['poslednje_do'];
@@ -692,10 +752,19 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
         $odgovoran_ime = $this->imeRadnika($odgovoran_id);
         $datum_fmt     = date('d.m.Y', strtotime($s['datum']));
 
+        // Poštuj zapamćeni izbor obaveštenja sa (do tada) nacrta:
+        //   ne → objavi bez obaveštenja; zakazano+buduće vreme → zakaži; inače → pošalji odmah.
+        $objaviTip    = $s['obavesti_tip'] ?: 'odmah';
+        $objaviAt     = $s['obavesti_at'] ?: '';
+        $zakaziObjavu = ($objaviTip === 'zakazano' && $objaviAt !== '' && strtotime($objaviAt) > time());
+
         $rs = $this->db->prepare("SELECT radnik_id, vreme_od, vreme_do FROM raspored_radnici WHERE stavka_id=?");
         $rs->execute([$stavka_id]);
+        $radnik_ids = [];
         foreach ($rs->fetchAll(\PDO::FETCH_ASSOC) as $r) {
             $radnik_id   = (int)$r['radnik_id'];
+            $radnik_ids[] = $radnik_id;
+            if ($objaviTip === 'ne') continue; // objavljeno, ali ekipa se ne obaveštava
             $jeOdgovoran = ($odgovoran_id && $odgovoran_id === $radnik_id);
             $poruka = "📋 Dodeljen si na zadatak: {$s['opis']}\n🏗️ Gradilište: {$gNaziv}\n📅 Datum: {$datum_fmt}\n🕐 Vreme: " . substr($r['vreme_od'],0,5) . " – " . substr($r['vreme_do'],0,5);
             if ($jeOdgovoran) {
@@ -703,8 +772,50 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
             } elseif ($odgovoran_id && $odgovoran_ime !== '') {
                 $poruka .= "\n📦 {$odgovoran_ime} odgovoran za unos materijala";
             }
-            $this->notifikuj($radnik_id, Auth::ime(), $poruka, $s['datum'] ?? '', $stavka_id);
+            if ($zakaziObjavu) {
+                $this->zakaziObavestenje($stavka_id, $radnik_id, $poruka, $objaviAt, $s['datum'] ?? '');
+            } else {
+                $this->notifikuj($radnik_id, Auth::ime(), $poruka, $s['datum'] ?? '', $stavka_id);
+            }
         }
+
+        // Odgovoran za materijal koji NIJE radnik na zadatku — zasebno obaveštenje.
+        if ($objaviTip !== 'ne' && $odgovoran_id && !in_array($odgovoran_id, $radnik_ids, true)) {
+            $pO = $this->porukaOdgovoran(true, $s['opis'], $gNaziv, $datum_fmt);
+            if ($zakaziObjavu) {
+                $this->zakaziObavestenje($stavka_id, $odgovoran_id, $pO, $objaviAt, $s['datum'] ?? '');
+            } else {
+                $this->notifikuj($odgovoran_id, Auth::ime(), $pO, $s['datum'] ?? '', $stavka_id);
+            }
+        }
+    }
+
+    /** Pošalji odmah ili zakaži — isto pravilo kao za radnike (odmah/zakazano). */
+    private function obavestiIliZakazi(string $tip, ?string $at, int $stavka_id, int $radnik_id, string $poruka, string $datum): void
+    {
+        if ($tip === 'odmah') {
+            $this->notifikuj($radnik_id, Auth::ime(), $poruka, $datum, $stavka_id);
+        } elseif ($tip === 'zakazano' && $at) {
+            $this->zakaziObavestenje($stavka_id, $radnik_id, $poruka, $at, $datum);
+        }
+    }
+
+    /** Poruka osobi koja JESTE/NIJE odgovorna za unos materijala (a nije radnik na zadatku). */
+    private function porukaOdgovoran(bool $dodeljen, string $opis, string $gNaziv, string $datum_fmt): string
+    {
+        $glava = $dodeljen
+            ? "📦 Određen si za unos materijala"
+            : "📦 Više nisi odgovoran za unos materijala";
+        return "{$glava}:\n📋 {$opis}\n🏗️ {$gNaziv}\n📅 {$datum_fmt}";
+    }
+
+    /** datetime-local ("Y-m-dTH:i") → MySQL "Y-m-d H:i:s", ili null. */
+    private function normDatetime(string $s): ?string
+    {
+        $s = str_replace('T', ' ', trim($s));
+        if ($s === '') return null;
+        if (strlen($s) === 16) $s .= ':00';
+        return $s;
     }
 
     private function imeRadnika(?int $id): string
@@ -742,19 +853,53 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
         return null;
     }
 
-    private function zakaziObavestenje(int $stavka_id, int $radnik_id, string $poruka, string $send_at): void
+    private function zakaziObavestenje(int $stavka_id, int $radnik_id, string $poruka, string $send_at, string $datum = ''): void
     {
         try {
+            // datetime-local šalje "YYYY-MM-DDTHH:MM" — MariaDB traži razmak i sekunde.
+            $send_at = str_replace('T', ' ', trim($send_at));
+            if (strlen($send_at) === 16) $send_at .= ':00';
+            if ($send_at === '' ) return;
+
             $stmt = $this->db->prepare("
-                INSERT INTO raspored_obavestenja (nedelja_id, send_at, poslato)
-                SELECT rd.nedelja_id, ?, 0
+                INSERT INTO raspored_obavestenja (nedelja_id, stavka_id, radnik_id, poruka, datum, send_at, poslato)
+                SELECT rd.nedelja_id, ?, ?, ?, ?, ?, 0
                 FROM raspored_stavke rs
                 JOIN raspored_dani rd ON rs.dan_id = rd.id
                 WHERE rs.id = ?
                 LIMIT 1
             ");
-            $stmt->execute([$send_at, $stavka_id]);
+            $stmt->execute([$stavka_id, $radnik_id, $poruka, $datum, $send_at, $stavka_id]);
         } catch (\Throwable $e) {}
+    }
+
+    /**
+     * Šalje sve DOSPELE zakazane notifikacije (poziva ga raspored_cron.php sa cPanel cron-a).
+     * Bez ovog cron-a "Zakaži obaveštenje" ne radi — niko ne povuče okidač u zakazano vreme.
+     * Vraća ['poslato' => N, 'log' => [...]].
+     */
+    public function posaljiZakazane(): array
+    {
+        $poslato = 0;
+        $log = [];
+        $stmt = $this->db->query("
+            SELECT id, radnik_id, poruka, datum, stavka_id
+            FROM raspored_obavestenja
+            WHERE poslato = 0 AND radnik_id IS NOT NULL AND send_at <= NOW()
+            ORDER BY send_at ASC
+            LIMIT 200
+        ");
+        foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $r) {
+            // notifikuj() je best-effort (sve hvata interno); markiraj poslato i bez potvrde isporuke.
+            $this->notifikuj(
+                (int)$r['radnik_id'], '', (string)$r['poruka'],
+                (string)($r['datum'] ?? ''), (int)($r['stavka_id'] ?? 0)
+            );
+            $this->db->prepare("UPDATE raspored_obavestenja SET poslato=1 WHERE id=?")->execute([$r['id']]);
+            $poslato++;
+            $log[] = "✓ #{$r['id']} → radnik {$r['radnik_id']}";
+        }
+        return ['poslato' => $poslato, 'log' => $log];
     }
 
     /**
@@ -783,12 +928,16 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $naslov = trim($linije[0]) ?: 'Raspored';
                 $telo   = trim(implode("\n", array_slice($linije, 1)));
                 if ($telo === '') $telo = $naslov;
+                // VAŽNO: putanja relativna na origin (sw.js je re-bazira), NE BASE_URL —
+                // zakazane poruke šalje raspored_cron.php (CLI) gde je BASE_URL pogrešan
+                // (nema $_SERVER), pa bi klik vodio na 404. App je uvek pod /mvc.
+                $putanja = '/mvc/?page=danas' . ($datum ? '&datum=' . urlencode($datum) : '');
                 PushController::notifyUsers([$radnik_id], [
                     'title' => mb_substr($naslov, 0, 80),
                     'body'  => mb_substr($telo, 0, 160),
-                    'url'   => BASE_URL . '/?page=danas' . ($datum ? '&datum=' . urlencode($datum) : ''),
+                    'url'   => $putanja,
                     'tag'   => $stavka_id ? ('raspored-' . $stavka_id) : 'raspored',
-                    'icon'  => BASE_URL . '/public/icon-192.png',
+                    'icon'  => '/mvc/public/icon-192.png',
                 ]);
             }
 
