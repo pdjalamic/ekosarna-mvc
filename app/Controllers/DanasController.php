@@ -168,21 +168,21 @@ while ($dodato < 4) {
                 $sadrzaj   = trim($_POST['sadrzaj'] ?? '');
                 if (!$sadrzaj || !$stavka_id) $this->json(['ok' => false, 'err' => 'Prazna poruka.']);
 
-                $check = $this->db->prepare("SELECT 1 FROM raspored_radnici WHERE stavka_id=? AND radnik_id=?");
-                $check->execute([$stavka_id, $uid]);
+                // Pristup: radnik na zadatku ILI odgovoran za unos materijala.
+                $check = $this->db->prepare("
+                    SELECT 1 FROM raspored_stavke rs
+                    LEFT JOIN raspored_radnici rr ON rr.stavka_id = rs.id AND rr.radnik_id = ?
+                    WHERE rs.id = ? AND (rr.radnik_id = ? OR rs.odgovoran_id = ?)
+                    LIMIT 1
+                ");
+                $check->execute([$uid, $stavka_id, $uid, $uid]);
                 if (!$check->fetch()) $this->json(['ok' => false, 'err' => 'Nemate pristup.']);
 
                 $stmt = $this->db->prepare("INSERT INTO raspored_poruke (stavka_id, autor_id, sadrzaj) VALUES (?, ?, ?)");
                 $stmt->execute([$stavka_id, $uid, $sadrzaj]);
 
-                $pisaliStmt = $this->db->prepare("
-                    SELECT DISTINCT autor_id FROM raspored_poruke
-                    WHERE stavka_id=? AND autor_id!=?
-                ");
-                $pisaliStmt->execute([$stavka_id, $uid]);
-                foreach ($pisaliStmt->fetchAll(\PDO::FETCH_COLUMN) as $primalac_id) {
-                    $this->notifikuj((int)$primalac_id, Auth::ime(), 'Nova poruka na rasporedu');
-                }
+                // Obavesti sve učesnike (radnici + odgovoran + raniji pisci), kanalno-svesno + deep-link.
+                \Controllers\RasporedController::notifikujPorukaRasporeda($stavka_id, (int)$uid, $sadrzaj);
 
                 $this->json(['ok' => true]);
                 break;
@@ -566,27 +566,4 @@ PROMPT;
         ")->execute([$uid, $kljuc, $vrednost, $vrednost]);
     }
 
-    private function notifikuj(int $primalac_id, string $posiljalac, string $poruka): void
-    {
-        try {
-            $stmt = $this->db->prepare("SELECT platforma, platforma2 FROM admin_korisnici WHERE id=?");
-            $stmt->execute([$primalac_id]);
-            $row = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$row) return;
-
-            $platforme = array_unique(array_filter([$row['platforma'] ?? '', $row['platforma2'] ?? '']));
-
-            foreach ($platforme as $platforma) {
-                if ($platforma === 'ios') {
-                    $stmt2 = $this->db->prepare("SELECT chat_id FROM telegram_subscriptions WHERE korisnik_id=? AND aktivan=1");
-                    $stmt2->execute([$primalac_id]);
-                    $token = $_ENV['TELEGRAM_BOT_TOKEN'] ?? '';
-                    $text  = urlencode("\xf0\x9f\x92\xac {$posiljalac}: {$poruka}\n\nekosarna.com/mvc/?page=danas");
-                    foreach ($stmt2->fetchAll(\PDO::FETCH_COLUMN) as $chat_id) {
-                        @file_get_contents("https://api.telegram.org/bot{$token}/sendMessage?chat_id={$chat_id}&text={$text}");
-                    }
-                }
-            }
-        } catch (\Throwable $e) {}
-    }
 }

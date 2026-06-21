@@ -74,10 +74,10 @@ $gradilista_json = json_encode($gradilista);
                     <?php endif; ?>
                 </div>
                 <div style="display:flex;gap:5px;flex-shrink:0;">
-                    <!-- 💬 Poruke — skriveno, funkcionalnost zadržana -->
+                    <!-- 💬 Poruke -->
                     <button type="button" class="btn-sm" id="dp-btn-<?= $s['id'] ?>"
                         onclick="openDanasThread(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
-                        title="Poruke" style="display:none;position:relative;">
+                        title="Poruke" style="position:relative;background:#eef2ff;color:#4338ca;border-color:#c7d2fe;">
                         💬<?php if ($s['poruka_count'] > 0): ?><span style="background:#6b7280;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:3px;font-weight:700;"><?= $s['poruka_count'] ?></span><?php endif; ?><?php if (!empty($s['nova_poruka'])): ?><span style="background:#e53935;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:2px;font-weight:700;"><?= $s['nove_poruke_count'] ?></span><?php endif; ?>
                     </button>
                     <button type="button" class="btn-sm"
@@ -452,6 +452,20 @@ function posaljiDanasPoruku() {
     var fd = new FormData(); fd.append('_action','danas_poruka_add'); fd.append('stavka_id',_danasStavkaId); fd.append('id',0); fd.append('sadrzaj',sadrzaj);
     fetch('', { method:'POST', body:fd }).then(r=>r.json()).then(d => { if(d.ok) { document.getElementById('danas-thread-input').value=''; ucitajDanasPoruke(_danasStavkaId); } });
 }
+
+// Deep-link iz notifikacije: ?openporuke=<stavka_id> → automatski otvori taj thread
+(function() {
+    try {
+        var op = new URLSearchParams(location.search).get('openporuke');
+        if (!op) return;
+        var open = function() {
+            var btn = document.getElementById('dp-btn-' + op);
+            if (btn) btn.click();
+        };
+        if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', open);
+        else open();
+    } catch (e) {}
+})();
 
 // ── Vreme / Materijal (vezan za stavku) ──────────────────────
 function openDanasVreme(stavkaId, naslov) {

@@ -232,10 +232,10 @@ class RasporedController extends \Core\Controller
                 $redosled = (int)$stmt->fetchColumn();
 
                 $stmt = $this->db->prepare("
-                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status, obavesti_tip, obavesti_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status, obavesti_tip, obavesti_at, kreator_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id, $status, $izborTip, $obavesti_at_store]);
+                $stmt->execute([$dan_id, $gradiliste_id, $opis, $redosled, $odgovoran_id, $status, $izborTip, $obavesti_at_store, (int)Auth::id()]);
                 $stavka_id = $this->db->lastInsertId();
 
                 $datum_fmt   = $danInfo ? date('d.m.Y', strtotime($danInfo['datum'])) : '';
@@ -571,9 +571,9 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                     $stmt = $this->db->prepare("SELECT * FROM raspored_stavke WHERE dan_id=?");
                     $stmt->execute([$dan['id']]);
                     foreach ($stmt->fetchAll(\PDO::FETCH_ASSOC) as $s) {
-                        // Kopiraj i odgovoran_id i status (nacrt ostaje nacrt)
-                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status) VALUES (?, ?, ?, ?, ?, ?)");
-                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled'], $s['odgovoran_id'], $s['status'] ?? 'objavljeno']);
+                        // Kopiraj i odgovoran_id i status (nacrt ostaje nacrt); kreator = ko kopira
+                        $stmt = $this->db->prepare("INSERT INTO raspored_stavke (dan_id, gradiliste_id, opis, redosled, odgovoran_id, status, kreator_id) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $stmt->execute([$novi_dan_id, $s['gradiliste_id'], $s['opis'], $s['redosled'], $s['odgovoran_id'], $s['status'] ?? 'objavljeno', (int)Auth::id()]);
                         $nova_stavka_id = $this->db->lastInsertId();
 
                         $stmt = $this->db->prepare("SELECT * FROM raspored_radnici WHERE stavka_id=?");
@@ -611,18 +611,7 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $stmt = $this->db->prepare("INSERT INTO raspored_poruke (stavka_id, autor_id, sadrzaj) VALUES (?, ?, ?)");
                 $stmt->execute([$stavka_id, Auth::id(), $sadrzaj]);
 
-                // Datum stavke (za deep-link u notifikaciji)
-                $dStmt = $this->db->prepare("SELECT rd.datum FROM raspored_stavke rs JOIN raspored_dani rd ON rs.dan_id=rd.id WHERE rs.id=?");
-                $dStmt->execute([$stavka_id]);
-                $pDatum = (string)$dStmt->fetchColumn();
-
-                $stmt = $this->db->prepare("SELECT radnik_id FROM raspored_radnici WHERE stavka_id=?");
-                $stmt->execute([$stavka_id]);
-                foreach ($stmt->fetchAll(\PDO::FETCH_COLUMN) as $radnik_id) {
-                    if ($radnik_id != Auth::id()) {
-                        $this->notifikuj($radnik_id, Auth::ime(), '💬 Nova poruka na rasporedu: ' . mb_substr($sadrzaj, 0, 50), $pDatum, $stavka_id);
-                    }
-                }
+                self::notifikujPorukaRasporeda($stavka_id, (int)Auth::id(), $sadrzaj);
                 $this->json(['ok' => true]);
                 break;
 
@@ -788,6 +777,53 @@ $poruka = "📝 Izmena rasporeda ({$datum_fmt}):\n🏗️ " . ($gNovoNaziv ?: $g
                 $this->notifikuj($odgovoran_id, Auth::ime(), $pO, $s['datum'] ?? '', $stavka_id);
             }
         }
+    }
+
+    /**
+     * Obavesti SVE učesnike zadatka na rasporedu o novoj poruci u threadu:
+     * radnici + odgovoran za materijal + svi raniji pisci (minus autor).
+     * Kanalno-svesno (web/Android push, iOS Telegram) + deep-link na taj thread.
+     * Statička je da je dele i web (`raspored_poruka_add`) i mobilni (`danas_poruka_add`).
+     */
+    public static function notifikujPorukaRasporeda(int $stavka_id, int $autor_id, string $sadrzaj): void
+    {
+        try {
+            $db = \Core\Database::get();
+
+            $info = $db->prepare("SELECT rs.odgovoran_id, rs.kreator_id, rd.datum FROM raspored_stavke rs JOIN raspored_dani rd ON rs.dan_id=rd.id WHERE rs.id=?");
+            $info->execute([$stavka_id]);
+            $r = $info->fetch(\PDO::FETCH_ASSOC) ?: [];
+            $datum = (string)($r['datum'] ?? '');
+
+            $ids = [];
+            $w = $db->prepare("SELECT radnik_id FROM raspored_radnici WHERE stavka_id=?");
+            $w->execute([$stavka_id]);
+            foreach ($w->fetchAll(\PDO::FETCH_COLUMN) as $x) $ids[] = (int)$x;
+            if (!empty($r['odgovoran_id'])) $ids[] = (int)$r['odgovoran_id'];
+            if (!empty($r['kreator_id']))   $ids[] = (int)$r['kreator_id'];
+            $a = $db->prepare("SELECT DISTINCT autor_id FROM raspored_poruke WHERE stavka_id=?");
+            $a->execute([$stavka_id]);
+            foreach ($a->fetchAll(\PDO::FETCH_COLUMN) as $x) $ids[] = (int)$x;
+
+            $primaoci = array_values(array_unique(array_filter($ids, fn($x) => $x && $x !== $autor_id)));
+            if (!$primaoci) return;
+
+            $im = $db->prepare("SELECT ime FROM admin_korisnici WHERE id=?");
+            $im->execute([$autor_id]);
+            $autorIme = (string)($im->fetchColumn() ?: '');
+
+            $q     = ($datum ? '&datum=' . urlencode($datum) : '') . '&openporuke=' . $stavka_id;
+            $body  = $autorIme . ': ' . mb_substr($sadrzaj, 0, 80);
+            $tgUrl = 'https://ekosarna.com/mvc/?page=danas' . $q;
+
+            PushController::notifyKanali($primaoci, [
+                'title' => '💬 Nova poruka na rasporedu',
+                'body'  => $body,
+                'url'   => '/mvc/?page=danas' . $q,
+                'tag'   => 'raspored-poruka-' . $stavka_id,
+                'icon'  => '/mvc/public/icon-192.png',
+            ], "💬 Nova poruka na rasporedu\n" . $body . "\n\n" . $tgUrl);
+        } catch (\Throwable $e) {}
     }
 
     /** Pošalji odmah ili zakaži — isto pravilo kao za radnike (odmah/zakazano). */

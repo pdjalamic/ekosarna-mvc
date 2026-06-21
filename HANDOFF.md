@@ -4,6 +4,7 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
 00000. [Raspored — odgovoran za materijal (vođe + notifikacije + Danas)](#00000-raspored--odgovoran-za-materijal-vodje--notifikacije--danas)  · *2026-06-21* · 🔜 kod gotov + lint OK; bez SQL-a; test preostaje
 0000. [Raspored — zakazano (scheduled) + logo badge](#0000-raspored--zakazano-scheduled--logo-badge)  · *2026-06-21* · 🔜 kod gotov + lint OK; SQL + cPanel cron + test preostaju
 000. [Raspored — Android push za dodelu (klik otvara Danas)](#000-raspored--android-push-za-dodelu-klik-otvara-danas)  · *2026-06-20* · 🔜 kod gotov + lint OK; test na uređaju preostaje
@@ -13,6 +14,38 @@
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## 000000. Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez izmene baze.** Test preostaje.
+
+### Traženo
+Poruke po zadatku na rasporedu su se na webu videle/slale, ali na Androidu „samo obaveštenje koje se ne vidi i nema ikonice". Treba: poruka → **svi sa zadatka (radnici + odgovoran za materijal) dobiju notifikaciju** na **web/Android/iPhone** → iz notifikacije se otvara baš taj thread → odgovore → svi opet dobiju.
+
+### Nalaz
+- 💬 dugme na „Danas" je **bilo namerno skriveno** (`display:none`); thread modal i `danas_poruke_get/add` su radili.
+- `danas_poruka_add` je obaveštavao **samo ranije pisce** i kroz lokalni `notifikuj` koji radi **samo iOS/Telegram** → Android/web ništa.
+- Bez deep-linka na konkretan thread; pisanje dozvoljeno samo radnicima (odgovoran ne-radnik blokiran).
+
+### Izmene (3 fajla, bez SQL-a)
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/RasporedController.php` | Nova **statička** `notifikujPorukaRasporeda($stavka_id,$autor_id,$tekst)`: primaoci = radnici + odgovoran + raniji pisci (minus autor); `PushController::notifyKanali` (web/Android push + iOS Telegram) sa deep-linkom `?page=danas&datum=…&openporuke=<stavka_id>`. `raspored_poruka_add` (web) je koristi. |
+| `app/Controllers/DanasController.php` | `danas_poruka_add`: pristup radnik **ili** odgovoran; zove deljenu `RasporedController::notifikujPorukaRasporeda`. Uklonjen mrtav/pokvaren lokalni `notifikuj` (bio samo iOS). |
+| `app/Views/danas/index.php` | 💬 dugme **otkriveno** (plavo); na učitavanju `?openporuke=<id>` automatski otvori taj thread (klik na dugme). |
+
+### Deploy (bez baze)
+Uploaduj `RasporedController.php`, `DanasController.php`, `app/Views/danas/index.php`. Test: pošalji poruku na zadatku → svi sa zadatka (uklj. odgovornog) dobiju push/Telegram na sve 3 platforme → klik otvori thread → odgovori → svi opet dobiju. `tag=raspored-poruka-<id>` (odvojeno od obaveštenja o dodeli).
+
+#### Update 2026-06-21 — kreator zadatka dobija notifikaciju za poruke
+**Problem:** poruke nisu stizale osobi koja je NAPRAVILA zadatak na rasporedu (na webu) — jer raspored, za razliku od Zadataka, nije imao „kreatora" pa nije bio u listi primalaca (samo radnici + odgovoran + raniji pisci). **Popravka:** nova kolona `kreator_id` na `raspored_stavke`; upisuje se pri kreiranju (`raspored_dodaj_stavku`) i kopiranju (`raspored_kopiraj`); `notifikujPorukaRasporeda` dodaje kreatora u primaoce. Ista kolona služi i za **#1** (nacrt vidljiv samo kreatoru).
+| Fajl | Izmena |
+|---|---|
+| `raspored_kreator.sql` | **NOV.** `ADD COLUMN IF NOT EXISTS kreator_id INT UNSIGNED NULL` na `raspored_stavke`. Idempotentno. **Pokrenuti JEDNOM na produkciji PRE deploya.** |
+| `app/Controllers/RasporedController.php` | Upis `kreator_id=Auth::id()` u dodaj/kopiraj; kreator dodat u primaoce poruka. |
+**Napomena:** stari zadaci (pre kolone) imaju `kreator_id` NULL → kreator se ne notifikuje za njih; testirati na NOVOM zadatku.
 
 ---
 
