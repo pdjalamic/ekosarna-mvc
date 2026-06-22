@@ -67,6 +67,7 @@
 <form method="GET" style="display:flex;flex-wrap:wrap;gap:10px;margin-bottom:18px;align-items:flex-end;">
     <input type="hidden" name="page" value="evidencija">
     <input type="hidden" name="tab" value="<?= h($tab) ?>">
+    <input type="hidden" name="grupa" value="<?= h($grupisanje ?? 'ekipa') ?>">
 
     <div>
         <div style="font-size:11px;color:var(--muted);margin-bottom:4px;">Od</div>
@@ -119,6 +120,13 @@
         📦 Utrošak materijala
         <span style="background:var(--light);border-radius:99px;font-size:11px;padding:1px 7px;margin-left:4px;"><?= count($mat_unosi) ?></span>
     </a>
+    <?php if ($je_kancelarija): ?>
+    <a href="?page=evidencija&tab=sumar&od=<?= h($filter_od) ?>&do=<?= h($filter_do) ?>&radnik=<?= $filter_radnik ?>&gradiliste=<?= $filter_grad ?>&grupa=<?= h($grupisanje) ?>"
+       style="padding:9px 18px;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px 8px 0 0;
+              <?= $tab === 'sumar' ? 'background:#fff;color:var(--blue);border:2px solid var(--light2);border-bottom:2px solid #fff;margin-bottom:-2px;' : 'color:var(--muted);' ?>">
+        📋 Dnevni pregled
+    </a>
+    <?php endif; ?>
 </div>
 
 <?php if ($tab === 'vreme'): ?>
@@ -304,6 +312,130 @@
 </table>
 <?php endif; ?>
 </div>
+
+<?php elseif ($tab === 'sumar'): ?>
+<!-- ═══ DNEVNI PREGLED (sumar po danu / timu / gradilištu) ═════ -->
+<style>
+.dp-card { border:1.5px solid var(--light2);border-radius:12px;background:#fff;margin-bottom:16px;overflow:hidden; }
+.dp-head { display:flex;align-items:center;justify-content:space-between;gap:10px;background:#f7f9fd;padding:12px 16px;cursor:pointer;user-select:none; }
+.dp-head-title { font-weight:700;color:var(--blue);font-size:15px; }
+.dp-chev { color:var(--muted);font-size:14px;transition:transform .15s; }
+.dp-card.collapsed .dp-body { display:none; }
+.dp-card.collapsed .dp-chev { transform:rotate(180deg); }
+.dp-body { padding:14px 16px;border-top:1px solid var(--light2); }
+.dp-sec { display:flex;align-items:center;justify-content:space-between;gap:10px;margin:0 0 6px; }
+.dp-sec-label { font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted); }
+.dp-badge { background:#dbe7f7;border:1px solid #c3d4ee;border-radius:99px;padding:3px 12px;font-size:12px;font-weight:700;color:#34548a;white-space:nowrap; }
+.dp-tbl { width:100%;border-collapse:collapse;font-size:13px; }
+.dp-tbl th { text-align:left;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);padding:7px 10px;border-bottom:1.5px solid var(--light2); }
+.dp-tbl td { padding:9px 10px;border-bottom:1px solid var(--light);vertical-align:top; }
+.dp-tbl tr:last-child td { border-bottom:none; }
+.dp-mat td { background:#fef6d8; }
+.dp-foot { display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;background:#f7f9fd;border:1.5px solid var(--light2);border-radius:12px;padding:12px 18px;margin-top:6px;font-size:13px;color:var(--muted); }
+.dp-foot strong { color:var(--text); }
+@media (max-width:720px){ .dp-tbl-wrap{ overflow-x:auto; } .dp-tbl{ min-width:520px; } }
+</style>
+<?php
+  $danUkupnoSati = array_sum(array_map(fn($t) => $t['ukupno_sati'], $sumar));
+  $fmtSati = fn($h) => number_format((float)$h, 1, ',', '.') . 'h';
+  $fmtKol  = fn($k) => rtrim(rtrim(number_format((float)$k, 3, ',', '.'), '0'), ',');
+
+  $renderTim = function($t) use ($fmtSati, $fmtKol) { ?>
+    <div class="dp-card">
+      <div class="dp-head" onclick="this.parentNode.classList.toggle('collapsed')">
+        <span class="dp-head-title">🏗️ <?= h($t['gradiliste_naziv']) ?><?php if ($t['zadatak_opis']): ?> <span style="color:var(--muted);font-weight:600;">— <?= h($t['zadatak_opis']) ?></span><?php endif; ?></span>
+        <span class="dp-chev">⌃</span>
+      </div>
+      <div class="dp-body">
+        <div class="dp-sec">
+          <span class="dp-sec-label">Radni sati</span>
+          <span class="dp-badge">Ukupno: <?= $fmtSati($t['ukupno_sati']) ?></span>
+        </div>
+        <div class="dp-tbl-wrap">
+        <table class="dp-tbl">
+          <thead><tr><th>Zaposleni</th><th>Uloga</th><th>Opis aktivnosti</th><th style="text-align:right;">Sati</th></tr></thead>
+          <tbody>
+          <?php if (empty($t['clanovi'])): ?>
+            <tr><td colspan="4" style="color:var(--muted);">Nema unosa radnih sati.</td></tr>
+          <?php else: foreach ($t['clanovi'] as $c): ?>
+            <tr>
+              <td style="font-weight:600;white-space:nowrap;">👷 <?= h($c['ime']) ?></td>
+              <td style="color:var(--muted);white-space:nowrap;"><?= h($c['uloga'] ?? '') ?></td>
+              <td><?= $c['opis'] !== '' ? nl2br(h($c['opis'])) : '<span style="color:var(--muted);">—</span>' ?></td>
+              <td style="text-align:right;font-weight:700;color:var(--blue);white-space:nowrap;"><?= $fmtSati($c['sati']) ?></td>
+            </tr>
+          <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+        </div>
+
+        <div class="dp-sec" style="margin-top:16px;"><span class="dp-sec-label">Utrošeni materijal</span></div>
+        <div class="dp-tbl-wrap">
+        <table class="dp-tbl">
+          <thead><tr><th>Materijal</th><th>Opis</th><th style="text-align:right;">Količina</th><th>Jedinica</th></tr></thead>
+          <tbody>
+          <?php if (empty($t['materijal'])): ?>
+            <tr><td colspan="4" style="color:var(--muted);">Nema utroška.</td></tr>
+          <?php else: foreach ($t['materijal'] as $m): ?>
+            <tr class="dp-mat">
+              <td style="font-weight:600;"><?= h($m['naziv']) ?></td>
+              <td style="color:var(--muted);"><?= !empty($m['opis']) ? h($m['opis']) : '—' ?></td>
+              <td style="text-align:right;font-weight:700;"><?= $fmtKol($m['kolicina']) ?></td>
+              <td style="color:var(--muted);"><?= h($m['jm']) ?></td>
+            </tr>
+          <?php endforeach; endif; ?>
+          </tbody>
+        </table>
+        </div>
+      </div>
+    </div>
+  <?php };
+?>
+
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:12px;margin-bottom:16px;">
+  <span style="font-size:13px;color:var(--muted);">Dan: <strong style="color:var(--text);"><?= date('d.m.Y', strtotime($sumar_dan)) ?></strong> <span style="font-size:11px;">(menja se poljem „Od" gore)</span></span>
+  <span style="font-size:13px;color:var(--muted);">·</span>
+  <span style="font-size:13px;color:var(--muted);">Ukupno sati (dan): <strong style="color:var(--blue);"><?= $fmtSati($danUkupnoSati) ?></strong></span>
+  <div style="margin-left:auto;display:flex;gap:4px;">
+    <?php $base = '?page=evidencija&tab=sumar&od='.h($filter_od).'&do='.h($filter_do).'&radnik='.$filter_radnik.'&gradiliste='.$filter_grad; ?>
+    <a href="<?= $base ?>&grupa=ekipa" style="padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;<?= $grupisanje==='ekipa' ? 'background:var(--blue);color:#fff;' : 'background:var(--light);color:var(--text);' ?>">Po ekipi</a>
+    <a href="<?= $base ?>&grupa=gradiliste" style="padding:6px 14px;font-size:13px;font-weight:600;text-decoration:none;border-radius:8px;<?= $grupisanje==='gradiliste' ? 'background:var(--blue);color:#fff;' : 'background:var(--light);color:var(--text);' ?>">Po gradilištu</a>
+  </div>
+</div>
+
+<?php if (empty($sumar)): ?>
+  <p style="color:var(--muted);text-align:center;padding:30px 0;">Nema unosa / timova za izabrani dan.</p>
+<?php else: ?>
+  <?php if ($grupisanje === 'gradiliste'): ?>
+    <?php
+      $poGrad = [];
+      foreach ($sumar as $t) { $poGrad[$t['gradiliste_naziv']][] = $t; }
+    ?>
+    <?php foreach ($poGrad as $gnaziv => $tmovi): ?>
+      <?php $gSati = array_sum(array_map(fn($t) => $t['ukupno_sati'], $tmovi)); ?>
+      <div style="margin-bottom:22px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;background:var(--blue);color:#fff;border-radius:10px;padding:9px 14px;margin-bottom:10px;">
+          <span style="font-weight:800;font-size:15px;">🏗️ <?= h($gnaziv) ?></span>
+          <span style="font-weight:700;">Ukupno: <?= $fmtSati($gSati) ?></span>
+        </div>
+        <?php foreach ($tmovi as $t) { $renderTim($t); } ?>
+      </div>
+    <?php endforeach; ?>
+  <?php else: ?>
+    <?php foreach ($sumar as $t) { $renderTim($t); } ?>
+  <?php endif; ?>
+
+  <?php
+    $radniciSet = [];
+    foreach ($sumar as $t) { foreach ($t['clanovi'] as $c) { $radniciSet[$c['radnik_id']] = true; } }
+  ?>
+  <div class="dp-foot">
+    <span>📋 Ukupno timova: <strong><?= count($sumar) ?></strong></span>
+    <span>Ukupno radnika: <strong><?= count($radniciSet) ?></strong></span>
+    <span>Ukupno sati: <span class="dp-badge"><?= $fmtSati($danUkupnoSati) ?></span></span>
+  </div>
+<?php endif; ?>
+
 <?php endif; ?>
 
 <!-- MODAL: Izmeni radni sat (bez segmenata) -->

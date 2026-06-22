@@ -530,6 +530,39 @@ function danasAiAnaliziraj(tip) {
     .catch(() => { btn.disabled=false; btn.textContent='🤖 Analiziraj'; alert('Mrežna greška.'); });
 }
 
+// ── Kontrola radnog vremena (od–do) ──────────────────────────
+function normTime(t) {
+    if (!t && t !== 0) return '';
+    var p = String(t).split(':');
+    if (p.length < 2) return '';
+    var h = parseInt(p[0], 10), m = parseInt(p[1], 10);
+    if (isNaN(h) || isNaN(m)) return '';
+    return ('0' + h).slice(-2) + ':' + ('0' + m).slice(-2);
+}
+function satiIzmedju(od, doo) {
+    var a = normTime(od), b = normTime(doo);
+    if (!a || !b) return null;
+    var pa = a.split(':'), pb = b.split(':');
+    var diff = (+pb[0]*60 + +pb[1]) - (+pa[0]*60 + +pa[1]);
+    if (diff <= 0) return null;
+    return Math.round(diff / 60 * 100) / 100;
+}
+function osveziAiSati() {
+    var odEl = document.getElementById('ai-vreme-od');
+    var doEl = document.getElementById('ai-vreme-do');
+    if (!odEl || !doEl) return;
+    var s = satiIzmedju(odEl.value, doEl.value);
+    if (_danasAiData) {
+        _danasAiData.vreme_od    = odEl.value || null;
+        _danasAiData.vreme_do    = doEl.value || null;
+        _danasAiData.ukupno_sati = s;
+    }
+    var lbl = document.getElementById('ai-vreme-sati');
+    if (lbl) lbl.textContent = s ? ('(' + s + 'h)') : '';
+    var up = document.getElementById('ai-vreme-upoz');
+    if (up) up.style.display = (odEl.value && doEl.value) ? 'none' : 'block';
+}
+
 function danasAiPrikaziPreview(tip, data) {
     var inputId = tip === 'vreme' ? 'danas-vreme-input-wrap' : (tip === 'materijal' ? 'danas-mat-input-wrap' : 'danas-nabavka-input-wrap');
     var prevId  = tip === 'vreme' ? 'danas-vreme-preview'    : (tip === 'materijal' ? 'danas-mat-preview'    : 'danas-nabavka-preview');
@@ -542,12 +575,18 @@ function danasAiPrikaziPreview(tip, data) {
     html += '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">'+naslovi[tip]+'</div>';
 
     if (tip === 'vreme') {
-        if (data.vreme_od || data.ukupno_sati) {
-            html += '<div class="danas-ai-row"><span class="danas-ai-label">Vreme</span>';
-            html += '<span>'+esc(data.vreme_od||'?')+'–'+esc(data.vreme_do||'?');
-            if (data.ukupno_sati) html += ' <strong>('+data.ukupno_sati+'h)</strong>';
-            html += '</span></div>';
-        }
+        var _vod = normTime(data.vreme_od), _vdo = normTime(data.vreme_do);
+        var _inpSt = 'border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:15px;outline:none;background:var(--light);';
+        html += '<div class="danas-ai-row" style="flex-direction:column;gap:6px;">';
+        html += '<span class="danas-ai-label">Radno vreme od–do <span style="color:#dc2626;">*</span></span>';
+        html += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">';
+        html += '<input type="time" id="ai-vreme-od" value="'+_vod+'" onchange="osveziAiSati()" style="'+_inpSt+'">';
+        html += '<span style="font-weight:700;">–</span>';
+        html += '<input type="time" id="ai-vreme-do" value="'+_vdo+'" onchange="osveziAiSati()" style="'+_inpSt+'">';
+        html += '<span id="ai-vreme-sati" style="font-weight:700;color:var(--blue);">'+(data.ukupno_sati?('('+data.ukupno_sati+'h)'):'')+'</span>';
+        html += '</div>';
+        html += '<div id="ai-vreme-upoz" style="color:#dc2626;font-size:12px;font-weight:600;display:'+((!_vod||!_vdo)?'block':'none')+';">⚠️ Unesi radno vreme (od–do) — obavezno za čuvanje.</div>';
+        html += '</div>';
         if (data.napomena_original) {
             html += '<div class="danas-ai-row" style="flex-direction:column;gap:4px;">';
             html += '<span class="danas-ai-label">Originalni opis</span>';
@@ -597,6 +636,10 @@ function danasAiPrikaziPreview(tip, data) {
         }
     }
 
+    if (tip === 'vreme' || tip === 'materijal') {
+        html += '<div style="margin-top:10px;background:#fef2f2;border:1.5px solid #fecaca;border-radius:8px;padding:8px 12px;color:#b91c1c;font-size:12px;font-weight:600;">⚠️ Dobro proveri unos — nakon snimanja nema naknadne izmene sa terena.</div>';
+    }
+
     html += '<div class="danas-ai-akcije">';
     html += '<button onclick="danasAiIzmeni(\''+tip+'\')" class="mail-cancel-btn">✏️ Izmeni</button>';
     html += '<button onclick="danasAiSacuvaj(\''+tip+'\')" class="btn-primary">✅ Potvrdi</button>';
@@ -622,6 +665,23 @@ function danasAiIzmeni(tip) {
 function danasAiSacuvaj(tip) {
     var data = _danasAiData;
     if (!data) { alert('Nema podataka za čuvanje.'); return; }
+
+    // Kontrola radnog vremena (od–do) — obavezno; mora se potvrditi ili uneti.
+    if (tip === 'vreme') {
+        var odEl = document.getElementById('ai-vreme-od');
+        var doEl = document.getElementById('ai-vreme-do');
+        var od = odEl ? odEl.value : '', dox = doEl ? doEl.value : '';
+        if (!od || !dox) {
+            var up = document.getElementById('ai-vreme-upoz'); if (up) up.style.display = 'block';
+            alert('Niste uneli radno vreme (od–do). Unesite ga da bi se zapis sačuvao.');
+            if (odEl && !od) odEl.focus(); else if (doEl) doEl.focus();
+            return;
+        }
+        var _s = satiIzmedju(od, dox);
+        if (_s === null) { alert('Vreme „do" mora biti posle „od".'); if (doEl) doEl.focus(); return; }
+        data.vreme_od = od; data.vreme_do = dox; data.ukupno_sati = _s; _danasAiData = data;
+    }
+
     var btn = event.target;
     btn.disabled = true; btn.textContent = '⏳ Čuvam...';
 
@@ -667,7 +727,8 @@ function danasAiSacuvaj(tip) {
             toast.textContent = poruke[tip] || '✅';
             toast.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#059669;color:#fff;padding:10px 20px;border-radius:8px;font-size:14px;font-weight:700;z-index:99999;';
             document.body.appendChild(toast);
-            setTimeout(function(){toast.remove();},2500);
+            // Osveži da se ikonica odmah zasivi (spreči dupli unos) i prikaže novo stanje
+            setTimeout(function(){ location.reload(); }, 1100);
         } else {
             btn.disabled=false; btn.textContent='✅ Potvrdi';
             alert('Greška: '+(d.err||'Nepoznata'));

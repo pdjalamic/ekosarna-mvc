@@ -105,13 +105,127 @@ class EvidencijaController extends \Core\Controller
             }
         } catch (\PDOException $e) { /* magacin_promet možda ne postoji */ }
 
+        // ── Dnevni pregled (sumar po danu; grupisano po ekipi/zadatku ili po gradilištu) ──
+        $grupisanje = (($_GET['grupa'] ?? 'ekipa') === 'gradiliste') ? 'gradiliste' : 'ekipa';
+        $sumar_dan  = $filter_od;                 // izabrani dan = polje „Od"
+        // Dnevni pregled je menadžerski (svi timovi) — samo kancelarija (ne teren).
+        $sumar      = ($tab === 'sumar' && $je_kancelarija) ? $this->dnevniPregled($sumar_dan, $filter_grad) : [];
+
         $this->view('evidencija/index', compact(
             'tab', 'filter_od', 'filter_do', 'filter_radnik', 'filter_grad',
             'radnici', 'gradilista',
             'vreme_unosi', 'ukupno_sati',
             'mat_unosi', 'magStanje',
-            'is_admin', 'je_kancelarija', 'uid'
+            'is_admin', 'je_kancelarija', 'uid',
+            'grupisanje', 'sumar_dan', 'sumar'
         ));
+    }
+
+    /**
+     * Dnevni pregled: za izabrani dan vrati listu TIMOVA (= zadataka iz rasporeda tog dana).
+     * Svaki tim: gradilište + zadatak, članovi (ime, sati, opis šta su uneli), ukupno sati,
+     * i utrošen materijal za CEO tim (zbirno, ne po članu). + „van rasporeda" za slobodan unos.
+     */
+    private function dnevniPregled(string $dan, int $filter_grad): array
+    {
+        // Vodi se iz STVARNIH unosa tog dana (radni sati + materijal), grupiše po zadatku
+        // (stavka_id; 0 = van rasporeda). Tako se prikaže sve uneto bez obzira na to kog
+        // dana/statusa je sama stavka u rasporedu.
+        $vr = $this->db->prepare("
+            SELECT rv.radnik_id, k.ime, k.uloga, rv.stavka_id, rv.ukupno_sati, rv.napomena,
+                   COALESCE(rs.gradiliste_id, rv.gradiliste_id, 0) AS gradiliste_id,
+                   COALESCE(NULLIF(rv.gradiliste_naziv,''), g.naziv, gs.naziv, '(bez gradilišta)') AS gradiliste_naziv,
+                   COALESCE(rs.opis, '') AS zadatak_opis
+            FROM raspored_vreme rv
+            JOIN admin_korisnici k ON k.id = rv.radnik_id
+            LEFT JOIN raspored_stavke rs ON rs.id = rv.stavka_id
+            LEFT JOIN gradilista g  ON g.id  = rv.gradiliste_id
+            LEFT JOIN gradilista gs ON gs.id = rs.gradiliste_id
+            WHERE rv.datum = ?
+        ");
+        $vr->execute([$dan]);
+        $vremeRows = $vr->fetchAll(\PDO::FETCH_ASSOC);
+
+        $mt = $this->db->prepare("
+            SELECT rm.stavka_id, rm.naziv, rm.kolicina, rm.jm, COALESCE(rm.komentar,'') AS komentar,
+                   COALESCE(rs.gradiliste_id, rm.gradiliste_id, 0) AS gradiliste_id,
+                   COALESCE(NULLIF(rm.gradiliste_naziv,''), g.naziv, gs.naziv, '(bez gradilišta)') AS gradiliste_naziv,
+                   COALESCE(rs.opis, '') AS zadatak_opis
+            FROM raspored_materijal rm
+            LEFT JOIN raspored_stavke rs ON rs.id = rm.stavka_id
+            LEFT JOIN gradilista g  ON g.id  = rm.gradiliste_id
+            LEFT JOIN gradilista gs ON gs.id = rs.gradiliste_id
+            WHERE rm.datum = ?
+        ");
+        $mt->execute([$dan]);
+        $matRows = $mt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // Ključ grupe: stavka_id ako postoji, inače 'g:'+gradiliste (slobodan unos po gradilištu)
+        $kljuc = fn($r) => !empty($r['stavka_id']) ? 'z:'.(int)$r['stavka_id'] : 'g:'.$r['gradiliste_naziv'];
+        $grupe = [];
+        $init = function(&$grupe, $key, $r) {
+            if (!isset($grupe[$key])) {
+                $grupe[$key] = [
+                    'stavka_id'        => !empty($r['stavka_id']) ? (int)$r['stavka_id'] : 0,
+                    'gradiliste_id'    => (int)$r['gradiliste_id'],
+                    'gradiliste_naziv' => $r['gradiliste_naziv'],
+                    'zadatak_opis'     => $r['zadatak_opis'],
+                    'clanovi'          => [],
+                    'materijal'        => [],
+                ];
+            }
+        };
+
+        foreach ($vremeRows as $r) {
+            $key = $kljuc($r);
+            $init($grupe, $key, $r);
+            $rid = (int)$r['radnik_id'];
+            if (!isset($grupe[$key]['clanovi'][$rid])) {
+                $grupe[$key]['clanovi'][$rid] = ['ime' => $r['ime'], 'uloga' => $r['uloga'], 'sati' => 0.0, 'opisi' => []];
+            }
+            $grupe[$key]['clanovi'][$rid]['sati'] += (float)$r['ukupno_sati'];
+            $op = trim((string)$r['napomena']);
+            if ($op !== '') $grupe[$key]['clanovi'][$rid]['opisi'][] = $op;
+        }
+        foreach ($matRows as $r) {
+            $key = $kljuc($r);
+            $init($grupe, $key, $r);
+            $mk = $r['naziv'].'|'.$r['jm'];
+            if (!isset($grupe[$key]['materijal'][$mk])) {
+                $grupe[$key]['materijal'][$mk] = ['naziv' => $r['naziv'], 'opis' => '', 'kolicina' => 0.0, 'jm' => $r['jm']];
+            }
+            $grupe[$key]['materijal'][$mk]['kolicina'] += (float)$r['kolicina'];
+            if ($grupe[$key]['materijal'][$mk]['opis'] === '' && trim((string)$r['komentar']) !== '') {
+                $grupe[$key]['materijal'][$mk]['opis'] = trim($r['komentar']);
+            }
+        }
+
+        $timovi = [];
+        foreach ($grupe as $g) {
+            if ($filter_grad && $g['gradiliste_id'] !== $filter_grad) continue;
+            $clanovi = [];
+            foreach ($g['clanovi'] as $rid => $c) {
+                $clanovi[] = ['radnik_id' => $rid, 'ime' => $c['ime'], 'uloga' => $c['uloga'],
+                              'sati' => round($c['sati'], 2), 'opis' => implode(' • ', $c['opisi'])];
+            }
+            usort($clanovi, fn($a, $b) => strcmp($a['ime'], $b['ime']));
+            $timovi[] = [
+                'stavka_id'        => $g['stavka_id'],
+                'gradiliste_id'    => $g['gradiliste_id'],
+                'gradiliste_naziv' => $g['gradiliste_naziv'],
+                'zadatak_opis'     => $g['stavka_id'] ? $g['zadatak_opis'] : 'Slobodan unos / van rasporeda',
+                'clanovi'          => $clanovi,
+                'ukupno_sati'      => array_sum(array_map(fn($c) => $c['sati'], $clanovi)),
+                'materijal'        => array_values($g['materijal']),
+            ];
+        }
+
+        usort($timovi, function($a, $b) {
+            $c = strcmp($a['gradiliste_naziv'], $b['gradiliste_naziv']);
+            return $c !== 0 ? $c : strcmp($a['zadatak_opis'], $b['zadatak_opis']);
+        });
+
+        return $timovi;
     }
 
     public function ajax(string $action, int $id): void

@@ -4,6 +4,10 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
+> ▶ **ZA UJUTRU (resume):** 4 koda + HANDOFF su **deployovani/testirani ali NISU komitovani** (poslednji commit: `c7af19c`). Nezakomitovano: `app/Controllers/DanasController.php`, `app/Controllers/EvidencijaController.php`, `app/Views/danas/index.php`, `app/Views/evidencija/index.php`, `HANDOFF.md`. Preostaje samo: uploadovati **najnoviji `DanasController.php`** (serverska brana protiv duplikata) + test re-unosa, pa **commit svega zajedno** (poruka npr.: „Evidencija Dnevni pregled + Danas: obavezno radno vreme, zasivljavanje ikonica i brana protiv duplikata"). Bez izmene baze.
+
+V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (osim finalnog testa serverske brane); **NIJE komitovano** — commit ujutru
+E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); **NIJE komitovano** — commit ujutru
 P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · ✅ radi, komitovano (`3cd6738`), na produkciji
 0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · ✅ radi, komitovano (`bdfdd9a`), na produkciji
 000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji
@@ -19,7 +23,42 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 
 ---
 
-## P. Poruke — redizajn u chat (WhatsApp/Viber stil)
+## V. Danas — obavezno radno vreme (od–do) pri unosu
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez baze.** Test preostaje.
+
+### Problem
+Pri unosu radnih sati na „Danas" (Upiši vreme → 🤖 Analiziraj → Potvrdi), ako tekst ne sadrži vreme, AI vrati prazno `vreme_od/do/ukupno_sati`, preview ga nije ni prikazivao (uslov `if (data.vreme_od||…)`), pa se zapis sačuvao **bez radnog vremena**.
+
+### Popravka (2 fajla, bez baze)
+| Fajl | Izmena |
+|---|---|
+| `app/Views/danas/index.php` | Preview za „vreme" **uvek** prikaže editabilna polja **Radno vreme od–do** (popunjena AI vrednošću; prazna ako nema) — mora se potvrditi ili uneti. `osveziAiSati()` računa sate iz od/do i ažurira `_danasAiData`. Čuvanje (`danasAiSacuvaj`) blokira ako od/do nisu uneti (poruka „Niste uneli radno vreme…" + fokus) ili ako „do" nije posle „od". Helperi `normTime/satiIzmedju`. |
+| `app/Controllers/DanasController.php` | Serverska kontrola u `danas_upisi_vreme`: odbij ako `vreme_od/vreme_do` prazni ili `ukupno_sati<=0` („Radno vreme (od–do) je obavezno."). |
+
+### Deploy / test
+Upload ta 2 fajla. Test: na „Danas" upiši opis BEZ vremena → Analiziraj → polja od–do prazna + upozorenje → „Potvrdi" blokiran dok ne uneseš → posle unosa čuva sa satima. Sa vremenom u tekstu → polja prepopunjena, može potvrditi ili izmeniti.
+
+#### Update 2026-06-22 — zasivljavanje ikonica + upozorenje pre snimanja
+- `DanasController` računa `vreme_upisano`/`materijal_upisan` po **stavci+korisnik** (BEZ datuma — zadatak je jednodnevni, a unos se snima sa današnjim datumom; vezivanje za `datum=$d` je ostavljalo 🕐 aktivnim kad se dan prikaza i datum unosa ne poklope). View ih već koristi (`disabled`). Posle uspešnog unosa stranica se **osveži** (`location.reload()` ~1.1s) → ikonica odmah neaktivna, **sprečen dupli unos**.
+- Materijal ide u **više zapisa** (INSERT u petlji po artiklu) → nema „jedan zapis za edit"; zato u preview-u (vreme i materijal) crveno upozorenje „⚠️ Dobro proveri unos — nakon snimanja nema naknadne izmene sa terena." Izmenu radi kancelarija u Evidenciji.
+- **Serverska brana protiv duplikata** (`danas_upisi_vreme`/`danas_upisi_materijal`): ako za `stavka_id+radnik_id` već postoji unos → odbij („…već uneto. Izmenu radi kancelarija."). Tako se duplo brojanje sati/materijala ne može desiti ni sa zastarelom stranom. Postojeći duplikati se brišu ručno u Evidenciji (🗑).
+- Fajlovi: `app/Controllers/DanasController.php`, `app/Views/danas/index.php`.
+
+**Datum:** 2026-06-21 · **Status:** 🔜 kod napisan, `php -l` čist. **Bez izmene baze.** Test preostaje.
+
+### Cilj
+Treći tab na Evidenciji (uz Radni sati / Utrošak): **dnevni sumar po ekipama**. Tim = jedan zadatak iz rasporeda tog dana. Po timu: gradilište + zadatak, članovi (ime, sati, opis šta su uneli), **ukupno sati za tim**, i **ukupan utrošak materijala za ceo tim** (zbirno, NE po članu). Inicijalno: izabrani dan, grupisano **po ekipi**; prekidač na **po gradilištu** (gradilište-zaglavlje + zbir sati); dan se menja poljem „Od".
+
+### Izmene (2 fajla, bez baze)
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/EvidencijaController.php` | `dnevniPregled($dan,$filter_grad)` **vodi se iz STVARNIH unosa** tog dana (`raspored_vreme` + `raspored_materijal`), grupiše po `stavka_id` (0/`g:`gradilište = van rasporeda); task/gradilište reši preko `LEFT JOIN raspored_stavke` (bez uslova dana/statusa — zato radi i kad stavka nije tog dana/objavljena). Članovi: sati (SUM) + opis (spojene napomene); materijal zbirno. Prosleđuje `$sumar/$grupisanje/$sumar_dan`. **Tab samo za kancelariju.** *(Prva verzija je vukla iz `raspored_dani` pa je bila prazna kad stavka ne ispunjava uslov — ispravljeno.)* |
+| `app/Views/evidencija/index.php` | Tab „📋 Dnevni pregled" (vidljiv kancelariji). Dizajn po maketi: **sklopive kartice** po timu; RADNI SATI tabela (Zaposleni / Uloga / Opis aktivnosti / Sati) + badge „Ukupno: Xh"; UTROŠENI MATERIJAL tabela (Materijal / Opis / Količina / Jedinica, žuti redovi); futer „Ukupno timova / Ukupno radnika / Ukupno sati". Prekidač Po ekipi / Po gradilištu. Kontroler vraća i `uloga` radnika i `opis` (komentar) materijala. |
+
+### Napomene / deploy
+- Dan = polje „Od" (na ovom tabu „Do"/„Osoba" se ne koriste). Filter „Gradilište" radi i ovde.
+- Deploy: upload ta 2 fajla. Test: izaberi dan sa rasporedom → vidi timove (gradilište/zadatak, članovi+sati+opis, ukupno sati, utrošak), prebaci „Po gradilištu".
 
 **Datum:** 2026-06-21 · **Status:** ✅ radi (web/Android/iOS), komitovano (`3cd6738`), na produkciji (SQL pokrenut).
 

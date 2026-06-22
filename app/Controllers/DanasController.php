@@ -66,6 +66,16 @@ while ($dodato < 4) {
             $stavke = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             foreach ($stavke as &$s) {
+                // Da li je korisnik već uneo radno vreme / materijal za OVU stavku (zadatak je
+                // jednodnevni, pa ne vezujemo za datum — unos se snima sa današnjim datumom).
+                // → ikonice se zasive (view koristi vreme_upisano / materijal_upisan).
+                $vu = $this->db->prepare("SELECT 1 FROM raspored_vreme WHERE stavka_id=? AND radnik_id=? LIMIT 1");
+                $vu->execute([$s['id'], $uid]);
+                $s['vreme_upisano'] = (bool)$vu->fetchColumn();
+                $mu = $this->db->prepare("SELECT 1 FROM raspored_materijal WHERE stavka_id=? AND radnik_id=? LIMIT 1");
+                $mu->execute([$s['id'], $uid]);
+                $s['materijal_upisan'] = (bool)$mu->fetchColumn();
+
                 $pc = $this->db->prepare("SELECT COUNT(*) FROM raspored_poruke WHERE stavka_id=?");
                 $pc->execute([$s['id']]);
                 $s['poruka_count'] = (int)$pc->fetchColumn();
@@ -370,8 +380,23 @@ PROMPT;
                     }
                 }
 
+                // Jedan unos po zadatku/radniku — drugi se odbija (sprečava duplo brojanje sati).
+                if ($stavka_id) {
+                    $ex = $this->db->prepare("SELECT 1 FROM raspored_vreme WHERE stavka_id=? AND radnik_id=? LIMIT 1");
+                    $ex->execute([$stavka_id, $uid]);
+                    if ($ex->fetchColumn()) $this->json(['ok' => false, 'err' => 'Radno vreme za ovaj zadatak je već uneto. Izmenu radi kancelarija (Evidencija).']);
+                }
+
                 $meta = json_decode($meta_json, true);
                 if (!$meta) $this->json(['ok' => false, 'err' => 'Neispravan JSON.']);
+
+                // Kontrola: radno vreme (od–do) je obavezno — bez njega zapis nema sati.
+                $vod = trim((string)($meta['vreme_od'] ?? ''));
+                $vdo = trim((string)($meta['vreme_do'] ?? ''));
+                $usat = isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : 0;
+                if ($vod === '' || $vdo === '' || $usat <= 0) {
+                    $this->json(['ok' => false, 'err' => 'Radno vreme (od–do) je obavezno.']);
+                }
 
                 $stmt = $this->db->prepare("
                     INSERT INTO raspored_vreme
@@ -431,6 +456,13 @@ PROMPT;
                             $grad_naziv = $gRow['naziv'] ?? '';
                         }
                     }
+                }
+
+                // Jedan unos materijala po zadatku/radniku — drugi se odbija.
+                if ($stavka_id) {
+                    $ex = $this->db->prepare("SELECT 1 FROM raspored_materijal WHERE stavka_id=? AND radnik_id=? LIMIT 1");
+                    $ex->execute([$stavka_id, $uid]);
+                    if ($ex->fetchColumn()) $this->json(['ok' => false, 'err' => 'Materijal za ovaj zadatak je već unet. Izmenu radi kancelarija (Evidencija).']);
                 }
 
                 $meta = json_decode($meta_json, true);
