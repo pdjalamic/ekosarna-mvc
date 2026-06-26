@@ -4,8 +4,9 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZADNJE:** V. i E. su deployovani, testirani (uklj. serversku branu protiv duplikata) i **komitovani** zajedno sa HANDOFF-om u `0050d3e`. Bez otvorenih stavki na ove dve teme.
+> ▶ **ZADNJE:** M. (Magacin + Evidencija: utrošak/stanje/brisanje ulaza) — sve testirano, na produkciji i komitovano (`6c6d32d`, `f3e9a7c`, `671a457`). Bez otvorenih stavki.
 
+M. [Magacin + Evidencija — utrošak, stanje, brisanje ulaza](#m-magacin--evidencija--utrosak-stanje-brisanje-ulaza)  · *2026-06-26* · ✅ radi/deployed; komitovano (`6c6d32d`/`f3e9a7c`/`671a457`)
 V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (uklj. serversku branu); komitovano (`0050d3e`)
 E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); komitovano (`0050d3e`)
 P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · ✅ radi, komitovano (`3cd6738`), na produkciji
@@ -20,6 +21,39 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## M. Magacin + Evidencija — utrošak, stanje, brisanje ulaza
+
+**Datum:** 2026-06-26 · **Status:** ✅ sve testirano, na produkciji, komitovano. **Potrebnan 1 SQL na produkciji** (vidi M1).
+
+Tri odvojene izmene u toku jedne sesije. Pozadina: stanje magacina = `SUM(magacin_promet)` (knjiga prometa); **nema trigera ni FK** ka primke/stavke → sinhronizacija stanja se radi **ručno u kodu**.
+
+### M1. Evidencija — ručni unos utroška materijala nije mogao da se sačuva (`6c6d32d`)
+**Simptom:** klik „Sačuvaj" u „Dodaj utrošak" → ništa (modal ostaje), a red se ipak upisivao (nema transakcije). **Tri uzroka** (lanac):
+1. `EvidencijaController::loguj()` 4. param je bio `array $staro`, a za akciju `'unos'` se šalje `null` → **TypeError 500**. Lek: `?array $staro`.
+2. `evidencija_log.akcija` je **ENUM('izmena','brisanje')** a MySQL je u `STRICT_TRANS_TABLES` → upis `'unos'` puca (1265). Lek: **`ALTER TABLE evidencija_log MODIFY akcija ENUM('izmena','brisanje','unos') NOT NULL;`** (mora i na produkciji; nije u migrate()).
+3. JS `sacuvajDodajMat()` bez `.catch()` → 500 prolazio „tiho". Lek: dodat `.catch` + provera HTTP statusa + disable dugmeta.
+
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/EvidencijaController.php` | `loguj(..., ?array $staro, ...)`. |
+| `app/Views/evidencija/index.php` | `.catch` + HTTP/JSON provera u `sacuvajDodajMat`. |
+
+**Deploy:** ta 2 fajla **+ obavezni ALTER** (bez ALTER-a se 500 ponavlja). Napomena: rani „tihi" pokušaji su ostavili fantomske duplikate u `raspored_materijal`+`magacin_promet` (čiste se kroz Evidenciju 🗑 ili SQL po grupama).
+
+### M2. Magacin „Stanje zaliha" — sakriti redove sa negativnim saldom (`f3e9a7c`)
+Utrošak/prenos mogu ostaviti negativan saldo grupe (npr. `-100,00`). Traženo: ne prikazivati taj red, ali ga **ostaviti u bazi za računanje**. `getStanjePoLokaciji()`: `HAVING stanje <> 0` → **`HAVING stanje > 0`**. Samo prikaz; svi `SUM` proračuni i provere (zaseban kod) netaknuti. Važi za **sve** lokacije. **Deploy:** 1 fajl `MagacinController.php`, bez SQL-a.
+
+### M3. Magacin — brisanje ulaza (primke) sad skida količinu + zaštita (`671a457`)
+**Pre:** `magacin_obrisi_primku` je brisao samo `magacin_primke`; `magacin_stavke` kaskadira (FK `fk_ms_primka`), **ali `magacin_promet` `ulaz` redovi NE** (nema FK/trigera) → roba je ostajala na stanju (bug). **Sad** (opcija „sa zaštitom"):
+1. Po grupama (lokacija/naziv/JM/namena) izračuna šta je primka donela; ako bi uklanjanje ulaza gurnulo trenutno stanje u **minus** (deo robe već potrošen/prenet) → **blokira** brisanje uz poruku koji artikal smeta.
+2. Ako je čisto → obriše `ulaz` redove iz `magacin_promet` (pre kaskade), pa primku (kaskada briše stavke), PDF, log.
+
+Frontend `obrisiPrimku` već radi `alert(d.err)` — poruka se vidi, view nije menjan. **Deploy:** 1 fajl `MagacinController.php`, bez SQL-a.
+
+> Memorije: [[magacin-stanje-promet]], [[evidencija-utrosak-loguj]].
 
 ---
 
