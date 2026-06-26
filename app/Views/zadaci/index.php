@@ -30,6 +30,13 @@ function avatarBoja(string $ime): string {
     return $boje[abs(crc32($ime)) % count($boje)];
 }
 
+// Veličina fajla (bajtovi -> čitljivo)
+function fmtVelicina(int $b): string {
+    if ($b >= 1048576) return number_format($b / 1048576, 1, ',', '.') . ' MB';
+    if ($b >= 1024)    return number_format($b / 1024, 0, ',', '.') . ' KB';
+    return $b . ' B';
+}
+
 $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
 ?>
 
@@ -129,11 +136,14 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
         if ($diff < 0)           $rok_klasa = 'err';
         elseif ($diff <= $warn_days) $rok_klasa = 'warn';
     }
-    $prihvacen      = !empty($z['prihvaceno_id']);
-    $moguPrihvatiti = !$prihvacen;
+    $clanovi        = $z['clanovi'] ?? [];
+    $jaClan = false; $jaPrihvatio = false;
+    foreach ($clanovi as $c) {
+        if ((int)$c['korisnik_id'] === (int)$uid) { $jaClan = true; $jaPrihvatio = (bool)$c['prihvatio']; }
+    }
+    $moguPrihvatiti = $jaClan && !$jaPrihvatio && $z['status'] !== 'zavrseno';
     $katBoje        = katBoja($z['kategorija'] ?? '');
     $rb             = ($stranica-1)*$po_stranici + $i + 1;
-    $razlicitePosobe= $prihvacen && $z['dodeljeno_id'] && (int)$z['prihvaceno_id'] !== (int)$z['dodeljeno_id'];
     $tekst_pun      = $z['tekst'];
     $tekst_kratki   = mb_strlen($tekst_pun) > 100 ? mb_substr($tekst_pun, 0, 100).'…' : $tekst_pun;
     $lastTs         = !empty($z['komentari']) ? end($z['komentari'])['created_at'] : '2000-01-01 00:00:00';
@@ -171,23 +181,20 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
                     <?php if ($rok_klasa==='err'): ?> — PREKORAČEN<?php elseif ($rok_klasa==='warn'): ?> — USKORO<?php endif; ?>
                 </span>
                 <?php endif; ?>
-                <?php if ($razlicitePosobe): ?>
-                <span style="font-size:11px;color:var(--muted);">
-                    <span style="text-decoration:line-through;"><?= h(explode(' ',$z['dodeljeno_ime'])[0]) ?></span>
-                    → <strong style="color:#15803d;"><?= h(explode(' ',$z['prihvaceno_ime'])[0]) ?></strong>
-                </span>
-                <?php elseif ($prihvacen): ?>
-                <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:20px;padding:2px 8px;font-weight:700;">✓ Prihvatio <?= h($z['prihvaceno_ime'] ?? '') ?> · <?= date('d.m H:i', strtotime($z['prihvaceno_at'])) ?></span>
-                <?php elseif ($z['dodeljeno_id']): ?>
-                <span style="font-size:11px;background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 8px;">⏳ <?= h($z['dodeljeno_ime'] ?? '') ?> — čeka prihvatanje</span>
-                <?php endif; ?>
+                <?php foreach ($clanovi as $c): ?>
+                    <?php if ($c['prihvatio']): ?>
+                    <span style="font-size:11px;background:#dcfce7;color:#15803d;border-radius:20px;padding:2px 8px;font-weight:700;" title="Prihvatio<?= $c['prihvatio_at'] ? ' · '.date('d.m H:i', strtotime($c['prihvatio_at'])) : '' ?>">✓ <?= h($c['korisnik_ime']) ?></span>
+                    <?php else: ?>
+                    <span style="font-size:11px;background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 8px;" title="Čeka prihvatanje">⏳ <?= h($c['korisnik_ime']) ?></span>
+                    <?php endif; ?>
+                <?php endforeach; ?>
                 <span style="font-size:10px;color:var(--muted);margin-left:auto;"><?= h($z['kreirao_ime']) ?> · <?= date('d.m.', strtotime($z['datum_kreiranja'])) ?></span>
             </div>
         </div>
         <!-- Akcije -->
         <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
-            <div style="display:flex;gap:4px;flex-wrap:nowrap;align-items:center;">
-                <?php if ($moguPrihvatiti && $z['dodeljeno_id']): ?>
+            <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
+                <?php if ($moguPrihvatiti): ?>
                 <button class="btn-sm" onclick="prihvatiZadatak(<?= $z['id'] ?>)"
                     style="background:#dcfce7;color:#15803d;border-color:#bbf7d0;font-size:11px;font-weight:700;white-space:nowrap;">
                     Prihvati
@@ -199,6 +206,16 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
                     <option value="u_toku"   <?= $z['status']==='u_toku'  ?'selected':'' ?>>U toku</option>
                     <option value="zavrseno" <?= $z['status']==='zavrseno'?'selected':'' ?>>Završeno</option>
                 </select>
+                <?php $moguPozvati = $jaClan || (int)$z['kreirao_id'] === (int)$uid || $jeDirektor; ?>
+                <?php if ($moguPozvati): ?>
+                <button class="btn-sm" onclick="otvoriPozovi(<?= $z['id'] ?>)" title="Pozovi još ljudi na zadatak"
+                    style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;font-size:11px;white-space:nowrap;">➕ Pozovi</button>
+                <?php endif; ?>
+                <?php $brFajlova = count($z['fajlovi'] ?? []); ?>
+                <button class="btn-sm" onclick="otvoriFajlove(<?= $z['id'] ?>)" title="Fajlovi na zadatku"
+                    style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;font-size:11px;white-space:nowrap;">📎 Fajlovi<span id="zfajl-cnt-<?= $z['id'] ?>"><?= $brFajlova ? ' ('.$brFajlova.')' : '' ?></span></button>
+                <button class="btn-sm" onclick="otvoriAlarm(<?= $z['id'] ?>)" title="Podsetnik / alarm"
+                    style="background:#fff7ed;color:#c2410c;border-color:#fed7aa;font-size:11px;white-space:nowrap;">⏰</button>
                 <?php if ($mozeZadati): ?>
                 <button class="btn-sm" onclick="otvoriEditZadatak(<?= $z['id'] ?>,'<?= h(addslashes($z['tekst'])) ?>','<?= h(addslashes($z['kategorija'])) ?>','<?= $z['status'] ?>','<?= $z['rok']??'' ?>','<?= $z['dodeljeno_id']??'' ?>')" title="Izmeni">✎</button>
                 <button class="btn-sm del" onclick="obrisiZadatak(<?= $z['id'] ?>)" title="Obriši">🗑</button>
@@ -227,6 +244,56 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
         <div id="zkom-wrap-<?= $z['id'] ?>"
             data-last-ts="<?= $lastTs ?>"
             style="display:none;margin-top:10px;">
+
+            <!-- Fajlovi -->
+            <?php
+                $fajlovi      = $z['fajlovi'] ?? [];
+                $jeKreatorZad = (int)$z['kreirao_id'] === (int)$uid;
+                $moguKaciti   = $jaClan || $jeKreatorZad || $jeDirektor;
+                $smemSkinuti  = $jaPrihvatio || $jeKreatorZad || $jeDirektor;
+            ?>
+            <div id="zfajl-sekcija-<?= $z['id'] ?>" style="margin-bottom:12px;">
+                <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">
+                    <span style="font-size:12px;font-weight:700;color:var(--muted);">📎 Fajlovi</span>
+                    <?php if ($moguKaciti): ?>
+                    <input type="file" id="zfajl-input-<?= $z['id'] ?>" multiple style="display:none;" onchange="uploadFajl(<?= $z['id'] ?>, this)">
+                    <button class="btn-sm" onclick="document.getElementById('zfajl-input-<?= $z['id'] ?>').click()"
+                        style="background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe;font-size:11px;">+ Dodaj fajl(ove)</button>
+                    <span id="zfajl-status-<?= $z['id'] ?>" style="font-size:11px;color:var(--muted);"></span>
+                    <?php endif; ?>
+                </div>
+                <div id="zfajl-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:4px;max-width:700px;">
+                    <?php foreach ($fajlovi as $f):
+                        $fext  = strtolower(pathinfo($f['naziv'], PATHINFO_EXTENSION));
+                        $isImg = in_array($fext, ['jpg','jpeg','png','gif','webp'], true);
+                        $isPdf = ($fext === 'pdf');
+                        $furl  = BASE_URL . '/?page=zadaci&dl=' . (int)$f['id'];
+                        $smem  = $smemSkinuti || (int)$f['dodao_id'] === (int)$uid;
+                        $moguObrisati = (int)$f['dodao_id'] === (int)$uid || $jeKreatorZad || $jeDirektor;
+                    ?>
+                    <div id="zfajl-row-<?= (int)$f['id'] ?>" style="display:flex;align-items:center;gap:8px;background:var(--light);border:1px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:12px;">
+                        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                            📄 <?= h($f['naziv']) ?>
+                            <span style="color:var(--muted);"> · <?= fmtVelicina((int)$f['velicina']) ?><?= $f['dodao_ime'] ? ' · '.h($f['dodao_ime']) : '' ?></span>
+                        </span>
+                        <?php if ($smem): ?>
+                            <?php if ($isImg): ?>
+                            <button class="btn-sm" onclick="openModal('<?= $furl ?>','img')" title="Pregledaj">👁</button>
+                            <?php elseif ($isPdf): ?>
+                            <button class="btn-sm" onclick="openModal('<?= $furl ?>','pdf')" title="Pregledaj">👁</button>
+                            <?php endif; ?>
+                            <a class="btn-sm" href="<?= $furl ?>&download=1" title="Preuzmi" style="text-decoration:none;">⬇</a>
+                        <?php else: ?>
+                            <span style="color:var(--muted);font-size:11px;white-space:nowrap;">🔒 nakon prihvatanja</span>
+                        <?php endif; ?>
+                        <?php if ($moguObrisati): ?>
+                        <button class="btn-sm del" onclick="obrisiFajl(<?= (int)$f['id'] ?>, <?= $z['id'] ?>)" title="Obriši">🗑</button>
+                        <?php endif; ?>
+                    </div>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+
             <!-- Komentari -->
             <div id="zkom-lista-<?= $z['id'] ?>" style="display:flex;flex-direction:column;gap:8px;max-width:700px;margin-bottom:10px;">
                 <?php foreach ($z['komentari'] as $k):
@@ -296,11 +363,17 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             </datalist>
             <input type="date" id="z-rok" min="<?= $today ?>"
                 style="flex:1;min-width:140px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
-            <select id="z-dodeljeno"
-                style="flex:1;min-width:160px;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;">
-                <option value="">— Dodeli osobi —</option>
-                <?php foreach ($primaoci as $u): ?><option value="<?= $u['id'] ?>"><?= h($u['ime']) ?></option><?php endforeach; ?>
-            </select>
+        </div>
+        <div style="margin-bottom:12px;">
+            <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Dodeli osobama <span style="font-weight:400;">(jednoj ili više):</span></div>
+            <div id="z-osobe" style="max-height:170px;overflow-y:auto;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;background:var(--light);display:flex;flex-direction:column;gap:2px;">
+                <?php foreach ($primaoci as $u): ?>
+                <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:4px 2px;">
+                    <input type="checkbox" class="z-osoba-ck" value="<?= $u['id'] ?>" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">
+                    <?= h($u['ime']) ?>
+                </label>
+                <?php endforeach; ?>
+            </div>
         </div>
         <div id="z-add-err" style="color:var(--red);font-size:12px;margin-bottom:8px;display:none;"></div>
         <div style="display:flex;gap:10px;justify-content:flex-end;">
@@ -354,9 +427,98 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
     </div>
 </div>
 
+<!-- MODAL: Pozovi još ljudi -->
+<div id="z-pozovi-modal"
+    style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:460px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="zatvoriZModal('z-pozovi-modal')"
+            style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:16px;font-weight:700;color:var(--blue);margin-bottom:6px;">➕ Pozovi još ljudi</h3>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Pozvane osobe dobijaju notifikaciju i mogu da prihvate zadatak.</div>
+        <input type="hidden" id="z-pozovi-id">
+        <div id="z-pozovi-osobe" style="max-height:260px;overflow-y:auto;border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;background:var(--light);display:flex;flex-direction:column;gap:2px;"></div>
+        <div id="z-pozovi-err" style="color:var(--red);font-size:12px;margin-top:8px;display:none;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+            <button class="mail-cancel-btn" onclick="zatvoriZModal('z-pozovi-modal')">Odustani</button>
+            <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="posaljiPoziv()">Pozovi</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL: Podsetnik / alarm -->
+<div id="z-alarm-modal"
+    style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.6);z-index:9998;align-items:center;justify-content:center;padding:16px;">
+    <div style="background:#fff;border-radius:16px;padding:24px;width:100%;max-width:460px;box-shadow:0 24px 80px #000a;position:relative;">
+        <button onclick="zatvoriZModal('z-alarm-modal')"
+            style="position:absolute;top:12px;right:12px;background:var(--light);border:none;color:var(--muted);width:28px;height:28px;border-radius:50%;font-size:16px;cursor:pointer;">✕</button>
+        <h3 style="font-size:16px;font-weight:700;color:var(--blue);margin-bottom:6px;">⏰ Podsetnik za zadatak</h3>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:14px;">Stiže kao push/Telegram poruka u izabrano vreme.</div>
+        <input type="hidden" id="z-alarm-id">
+
+        <div id="z-alarm-lista" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px;"></div>
+
+        <div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:6px;">Novi podsetnik</div>
+        <input type="datetime-local" id="z-alarm-kada"
+            style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;box-sizing:border-box;">
+        <div id="z-alarm-presets" style="display:flex;gap:6px;flex-wrap:wrap;margin:8px 0;"></div>
+        <input type="text" id="z-alarm-poruka" maxlength="255" placeholder="Napomena (opciono)"
+            style="width:100%;border:1.5px solid var(--light2);border-radius:8px;padding:8px 10px;font-size:13px;background:var(--light);outline:none;box-sizing:border-box;margin-bottom:10px;">
+        <div id="z-alarm-tip-wrap" style="display:flex;gap:16px;align-items:center;font-size:13px;margin-bottom:6px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="z-alarm-tip" value="licni" checked> Samo mene</label>
+            <label id="z-alarm-tim-lbl" style="display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="radio" name="z-alarm-tip" value="tim"> Ceo tim</label>
+        </div>
+        <div id="z-alarm-err" style="color:var(--red);font-size:12px;margin-top:6px;display:none;"></div>
+        <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:14px;">
+            <button class="mail-cancel-btn" onclick="zatvoriZModal('z-alarm-modal')">Odustani</button>
+            <button class="tim-add-btn" style="width:auto;padding:10px 22px;" onclick="postaviAlarm()">Postavi podsetnik</button>
+        </div>
+    </div>
+</div>
+
 <script>
 var _zUid = <?= (int)$uid ?>;
 var _zOtvoreni = {}; // zadatak_id -> last_ts
+// Za modal „Pozovi": lista svih primaoca + članovi po zadatku (da ne nudimo već dodate)
+var _zPrimaoci = <?= json_encode(array_map(fn($u) => ['id' => (int)$u['id'], 'ime' => $u['ime']], $primaoci), JSON_UNESCAPED_UNICODE) ?>;
+var _zClanovi = <?php
+    $m = [];
+    foreach ($zadaci as $zz) {
+        $m[(int)$zz['id']] = array_map(fn($c) => (int)$c['korisnik_id'], $zz['clanovi'] ?? []);
+    }
+    echo json_encode($m);
+?>;
+// Alarmi: dozvola za „ceo tim", kreator/rok po zadatku, i vidljivi zakazani podsetnici
+var _zMozeZadati = <?= $mozeZadati ? 'true' : 'false' ?>;
+var _zKreator = <?php
+    $mk = [];
+    foreach ($zadaci as $zz) { $mk[(int)$zz['id']] = (int)$zz['kreirao_id']; }
+    echo json_encode($mk);
+?>;
+var _zRok = <?php
+    $mr = [];
+    foreach ($zadaci as $zz) { $mr[(int)$zz['id']] = $zz['rok'] ?: ''; }
+    echo json_encode($mr, JSON_UNESCAPED_UNICODE);
+?>;
+var _zAlarmi = <?php
+    $ma = [];
+    foreach ($zadaci as $zz) {
+        $vis = [];
+        foreach ($zz['alarmi'] ?? [] as $al) {
+            $tim = empty($al['korisnik_id']);
+            $moj = ((int)$al['postavio_id'] === (int)$uid) || ((int)$al['korisnik_id'] === (int)$uid);
+            if ($tim || $moj || $jeDirektor) {
+                $vis[] = [
+                    'id'      => (int)$al['id'],
+                    'tim'     => $tim,
+                    'send_at' => $al['send_at'],
+                    'poruka'  => $al['poruka'],
+                ];
+            }
+        }
+        $ma[(int)$zz['id']] = $vis;
+    }
+    echo json_encode($ma, JSON_UNESCAPED_UNICODE);
+?>;
 
 // Polling za nove komentare
 setInterval(function() {
@@ -445,31 +607,221 @@ function filterZadaci() {
 
 function dodajZadatak() {
     var tekst = document.getElementById('z-tekst').value.trim();
-    var dodeljeno = document.getElementById('z-dodeljeno').value;
+    var osobe = Array.prototype.map.call(
+        document.querySelectorAll('.z-osoba-ck:checked'), function(ck){ return ck.value; });
     var err   = document.getElementById('z-add-err');
     err.style.display = 'none';
     if (!tekst) { err.textContent='Upiši tekst.'; err.style.display='block'; return; }
-    if (!dodeljeno) { err.textContent='Izaberi kome dodeljuješ zadatak.'; err.style.display='block'; return; }
+    if (!osobe.length) { err.textContent='Izaberi bar jednu osobu kojoj dodeljuješ zadatak.'; err.style.display='block'; return; }
     var rok = document.getElementById('z-rok').value;
     if (rok && rok < '<?= $today ?>') {
         err.textContent='Rok izvršenja ne može biti raniji od današnjeg datuma. Izaberite današnji ili neki budući datum.';
         err.style.display='block'; return;
     }
-    post({
-        _action:'zadatak_add', tekst:tekst,
-        kategorija: document.getElementById('z-kat').value.trim(),
-        rok: rok,
-        dodeljeno_id: dodeljeno,
-    }).then(function(d) {
+    // dodeljeno_id[] -> ručno preko FormData (post() ne ume niz)
+    var fd = new FormData();
+    fd.append('_action', 'zadatak_add');
+    fd.append('tekst', tekst);
+    fd.append('kategorija', document.getElementById('z-kat').value.trim());
+    fd.append('rok', rok);
+    osobe.forEach(function(idv){ fd.append('dodeljeno_id[]', idv); });
+    fetch(window.location.pathname, { method:'POST', body:fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d) {
         if (d.ok) location.reload();
         else { err.textContent = d.err||'Greška.'; err.style.display='block'; }
-    });
+      })
+      .catch(function(){ err.textContent='Greška u komunikaciji.'; err.style.display='block'; });
 }
 
 function prihvatiZadatak(id) {
     if (!confirm('Prihvatiti ovaj zadatak?')) return;
     post({ _action:'zadatak_prihvati', id:id }).then(function(d) {
         if (d.ok) location.reload(); else alert(d.err||'Greška.');
+    });
+}
+
+function otvoriPozovi(id) {
+    document.getElementById('z-pozovi-id').value = id;
+    document.getElementById('z-pozovi-err').style.display = 'none';
+    var postoje = _zClanovi[id] || [];
+    var slobodni = _zPrimaoci.filter(function(u){ return postoje.indexOf(u.id) === -1; });
+    var box = document.getElementById('z-pozovi-osobe');
+    if (!slobodni.length) {
+        box.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:8px;">Sve osobe su već na zadatku.</div>';
+    } else {
+        box.innerHTML = slobodni.map(function(u){
+            return '<label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;padding:4px 2px;">'+
+                '<input type="checkbox" class="z-poz-ck" value="'+u.id+'" style="width:16px;height:16px;cursor:pointer;flex-shrink:0;">'+
+                escH(u.ime)+'</label>';
+        }).join('');
+    }
+    document.getElementById('z-pozovi-modal').style.display = 'flex';
+}
+
+function posaljiPoziv() {
+    var id = document.getElementById('z-pozovi-id').value;
+    var osobe = Array.prototype.map.call(
+        document.querySelectorAll('.z-poz-ck:checked'), function(ck){ return ck.value; });
+    var err = document.getElementById('z-pozovi-err');
+    err.style.display = 'none';
+    if (!osobe.length) { err.textContent='Izaberi bar jednu osobu.'; err.style.display='block'; return; }
+    var fd = new FormData();
+    fd.append('_action', 'zadatak_pozovi');
+    fd.append('id', id);
+    osobe.forEach(function(idv){ fd.append('osobe[]', idv); });
+    fetch(window.location.pathname, { method:'POST', body:fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d.ok) location.reload();
+        else { err.textContent=d.err||'Greška.'; err.style.display='block'; }
+      })
+      .catch(function(){ err.textContent='Greška u komunikaciji.'; err.style.display='block'; });
+}
+
+// ── Podsetnik / alarm ────────────────────────────────────────
+function _zPad(n){ return (n<10?'0':'')+n; }
+function _zToLocal(d){
+    return d.getFullYear()+'-'+_zPad(d.getMonth()+1)+'-'+_zPad(d.getDate())+'T'+_zPad(d.getHours())+':'+_zPad(d.getMinutes());
+}
+function _zFmtAlarm(s){
+    var m = String(s||'').match(/(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    return m ? (m[3]+'.'+m[2]+'.'+m[1]+'. '+m[4]+':'+m[5]) : s;
+}
+function otvoriAlarm(id){
+    document.getElementById('z-alarm-id').value = id;
+    document.getElementById('z-alarm-err').style.display='none';
+    document.getElementById('z-alarm-kada').value='';
+    document.getElementById('z-alarm-poruka').value='';
+    var moguTim = _zMozeZadati || (_zKreator[id] == _zUid);
+    document.getElementById('z-alarm-tim-lbl').style.display = moguTim ? 'flex' : 'none';
+    var licni = document.querySelector('input[name="z-alarm-tip"][value="licni"]');
+    if (licni) licni.checked = true;
+    renderAlarmPresets(id);
+    renderAlarmLista(id);
+    document.getElementById('z-alarm-modal').style.display='flex';
+}
+function renderAlarmPresets(id){
+    var box = document.getElementById('z-alarm-presets');
+    var now = new Date();
+    var za1h  = new Date(now.getTime()+3600000);
+    var sutra = new Date(now.getFullYear(), now.getMonth(), now.getDate()+1, 8, 0);
+    var html = '<button type="button" class="btn-sm" onclick="document.getElementById(\'z-alarm-kada\').value=\''+_zToLocal(za1h)+'\'">za 1h</button>'+
+               '<button type="button" class="btn-sm" onclick="document.getElementById(\'z-alarm-kada\').value=\''+_zToLocal(sutra)+'\'">sutra 08:00</button>';
+    var rok = _zRok[id];
+    if (rok) {
+        var rd = new Date(rok+'T08:00');
+        if (!isNaN(rd.getTime())) {
+            html += '<button type="button" class="btn-sm" onclick="document.getElementById(\'z-alarm-kada\').value=\''+_zToLocal(rd)+'\'">na dan roka 08:00</button>';
+        }
+    }
+    box.innerHTML = html;
+}
+function renderAlarmLista(id){
+    var box = document.getElementById('z-alarm-lista');
+    var lista = _zAlarmi[id] || [];
+    if (!lista.length) { box.innerHTML=''; return; }
+    box.innerHTML = '<div style="font-size:12px;font-weight:700;color:var(--muted);margin-bottom:2px;">Zakazani podsetnici</div>' +
+        lista.map(function(a){
+            return '<div style="display:flex;align-items:center;gap:8px;background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:6px 10px;font-size:12px;">'+
+                '<span style="flex:1;">⏰ '+_zFmtAlarm(a.send_at)+' · '+(a.tim?'<strong>ceo tim</strong>':'samo ja')+
+                (a.poruka?(' — '+escH(a.poruka)):'')+'</span>'+
+                '<button class="btn-sm del" onclick="obrisiAlarm('+a.id+')" title="Otkaži">🗑</button>'+
+            '</div>';
+        }).join('');
+}
+function postaviAlarm(){
+    var id   = document.getElementById('z-alarm-id').value;
+    var kada = document.getElementById('z-alarm-kada').value;
+    var poruka = document.getElementById('z-alarm-poruka').value.trim();
+    var tipEl = document.querySelector('input[name="z-alarm-tip"]:checked');
+    var tip = tipEl ? tipEl.value : 'licni';
+    var err = document.getElementById('z-alarm-err'); err.style.display='none';
+    if (!kada) { err.textContent='Izaberi datum i vreme podsetnika.'; err.style.display='block'; return; }
+    post({ _action:'zadatak_alarm_add', id:id, kada:kada, poruka:poruka, tip:tip }).then(function(d){
+        if (d.ok) location.reload();
+        else { err.textContent=d.err||'Greška.'; err.style.display='block'; }
+    });
+}
+function obrisiAlarm(alarmId){
+    if (!confirm('Otkazati ovaj podsetnik?')) return;
+    post({ _action:'zadatak_alarm_delete', id:alarmId }).then(function(d){
+        if (d.ok) location.reload(); else alert(d.err||'Greška.');
+    });
+}
+
+// ── Fajlovi ──────────────────────────────────────────────────
+// Otvori (proširi) zadatak i skroluj do sekcije fajlova
+function otvoriFajlove(id){
+    var wrap = document.getElementById('zkom-wrap-'+id);
+    if (wrap && wrap.style.display === 'none') toggleZKom(id);
+    setTimeout(function(){
+        var sec = document.getElementById('zfajl-sekcija-'+id);
+        if (sec) sec.scrollIntoView({behavior:'smooth', block:'center'});
+    }, 120);
+}
+function fmtVel(b){
+    b = (+b)||0;
+    if (b >= 1048576) return (Math.round(b/1048576*10)/10).toString().replace('.',',')+' MB';
+    if (b >= 1024)    return Math.round(b/1024)+' KB';
+    return b+' B';
+}
+// Broj fajlova -> indikator na dugmetu „📎 Fajlovi (N)"
+function updateFajlCnt(id){
+    var lista = document.getElementById('zfajl-lista-'+id);
+    var n = lista ? lista.querySelectorAll('[id^="zfajl-row-"]').length : 0;
+    var cnt = document.getElementById('zfajl-cnt-'+id);
+    if (cnt) cnt.textContent = n ? (' ('+n+')') : '';
+}
+// Red fajla (klijentski render za upravo dodate — autor uvek sme pregled/preuzimanje/brisanje)
+function fajlRowHtml(id, f){
+    var ext = String(f.ext||'').toLowerCase();
+    var isImg = ['jpg','jpeg','png','gif','webp'].indexOf(ext) !== -1;
+    var isPdf = ext === 'pdf';
+    var view = isImg ? '<button class="btn-sm" onclick="openModal(\''+f.url+'\',\'img\')" title="Pregledaj">👁</button>'
+             : (isPdf ? '<button class="btn-sm" onclick="openModal(\''+f.url+'\',\'pdf\')" title="Pregledaj">👁</button>' : '');
+    return '<div id="zfajl-row-'+f.id+'" style="display:flex;align-items:center;gap:8px;background:var(--light);border:1px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:12px;">'+
+        '<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">📄 '+escH(f.naziv)+
+        '<span style="color:var(--muted);"> · '+fmtVel(f.velicina)+(f.dodao_ime?(' · '+escH(f.dodao_ime)):'')+'</span></span>'+
+        view+
+        '<a class="btn-sm" href="'+f.url+'&download=1" title="Preuzmi" style="text-decoration:none;">⬇</a>'+
+        '<button class="btn-sm del" onclick="obrisiFajl('+f.id+','+id+')" title="Obriši">🗑</button>'+
+    '</div>';
+}
+function uploadFajl(id, input){
+    if (!input.files || !input.files.length) return;
+    var files = input.files;
+    var prevelik = [];
+    for (var i=0;i<files.length;i++){ if (files[i].size > 25*1024*1024) prevelik.push(files[i].name); }
+    if (prevelik.length){ alert('Preveliki fajlovi (preko 25 MB):\n'+prevelik.join('\n')+'\n\nUkloni ih iz izbora pa pokušaj ponovo.'); input.value=''; return; }
+    var status = document.getElementById('zfajl-status-'+id);
+    if (status) status.textContent = 'Uploadujem '+files.length+' fajl'+(files.length===1?'':'(ova)')+'…';
+    var fd = new FormData();
+    fd.append('_action', 'zadatak_fajl_add');
+    fd.append('id', id);
+    for (var j=0;j<files.length;j++){ fd.append('fajlovi[]', files[j]); }
+    fetch(window.location.pathname, { method:'POST', body:fd })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (status) status.textContent = '';
+        input.value = '';
+        if (d.ok) {
+            var lista = document.getElementById('zfajl-lista-'+id);
+            if (lista && d.fajlovi) d.fajlovi.forEach(function(f){ lista.insertAdjacentHTML('beforeend', fajlRowHtml(id, f)); });
+            updateFajlCnt(id);
+            if (d.greske && d.greske.length) alert('Neki fajlovi nisu dodati:\n'+d.greske.join('\n'));
+        } else { alert(d.err||'Greška pri uploadu.'); }
+      })
+      .catch(function(){ if(status) status.textContent=''; alert('Greška u komunikaciji.'); input.value=''; });
+}
+function obrisiFajl(fid, taskId){
+    if (!confirm('Obrisati ovaj fajl?')) return;
+    post({ _action:'zadatak_fajl_delete', id:fid }).then(function(d){
+        if (d.ok) {
+            var row = document.getElementById('zfajl-row-'+fid);
+            if (row) row.remove();
+            if (taskId) updateFajlCnt(taskId);
+        } else alert(d.err||'Greška.');
     });
 }
 

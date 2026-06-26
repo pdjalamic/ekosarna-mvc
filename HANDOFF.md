@@ -4,8 +4,9 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZADNJE:** M. (Magacin + Evidencija: utrošak/stanje/brisanje ulaza) — sve testirano, na produkciji i komitovano (`6c6d32d`, `f3e9a7c`, `671a457`). Bez otvorenih stavki.
+> ▶ **ZADNJE:** Z. (Zadaci: više članova + pozivanje + alarm + fajlovi) — kod gotov, deployed; 3 nova SQL + cron. Vidi sekciju Z.
 
+Z. [Zadaci — više članova + pozivanje + alarm + fajlovi](#z-zadaci--vise-clanova--pozivanje--alarm--fajlovi)  · *2026-06-27* · ✅ kod gotov/deployed; 3 nova SQL + cron
 M. [Magacin + Evidencija — utrošak, stanje, brisanje ulaza](#m-magacin--evidencija--utrosak-stanje-brisanje-ulaza)  · *2026-06-26* · ✅ radi/deployed; komitovano (`6c6d32d`/`f3e9a7c`/`671a457`)
 V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (uklj. serversku branu); komitovano (`0050d3e`)
 E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); komitovano (`0050d3e`)
@@ -21,6 +22,56 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## Z. Zadaci — više članova + pozivanje + alarm + fajlovi
+
+**Datum:** 2026-06-27 · **Status:** ✅ kod gotov, `php -l` čist, deployed (testirano kroz faze). **3 nova SQL + 1 cron.**
+
+Veliko proširenje internih Zadataka u 4 faze. Ranije: zadatak je imao **jednog** dodeljenog (`dodeljeno_id`) i **jednog** prihvatioca (`prihvaceno_id`). Sada: **više članova, svako prihvata zasebno.**
+
+### Model podataka (3 nove tabele)
+- `zadaci_clanovi (zadatak_id, korisnik_id, prihvatio, prihvatio_at, pozvao_id, dodat_at)` — članovi (M:N). Seed iz starih `dodeljeno_id`/`prihvaceno_id` ide kroz **`zadaci_clanovi.sql`** (bitan — taj seed NIJE u `migrate()`; same tabele `migrate()` pravi).
+- `zadaci_alarmi (zadatak_id, korisnik_id [NULL=ceo tim], postavio_id, send_at, poruka, poslato)` — podsetnici.
+- `zadaci_fajlovi (zadatak_id, naziv, putanja, tip, velicina, dodao_id, dodat_at)` — fajlovi.
+- Stare kolone `dodeljeno_id`/`prihvaceno_id` **ostaju** (kompatibilnost; prvi dodeljeni/prvi prihvatilac se i dalje pune).
+
+### Faza 1 — više članova + NOVA vidljivost
+- `zadatak_add` prima `dodeljeno_id[]` → svi u `zadaci_clanovi`, notifikacija svima.
+- `zadatak_prihvati` je **po članu** (svako prihvata svoje); status → `u_toku` na prvo prihvatanje; kreator notifikovan.
+- **Vidljivost (PROMENA ponašanja):** Direktor vidi sve; ostali vide **samo** zadatke kojih su član ili koje su kreirali. **Neprihvaćen zadatak vidi samo onaj kome je namenjen** (ranije su svi videli sve neprihvaćene). Filter „Prihvatio" i redosled računaju se iz članova.
+- View: **checkbox multi-select** pri kreiranju; čipovi članova (✓ prihvatio / ⏳ čeka); „Prihvati" se vidi članu koji nije prihvatio.
+
+### Faza 2 — „➕ Pozovi"
+- `zadatak_pozovi` (poziva član/kreator/Direktor) → dodaje nove članove + **push/Telegram „Pozvan si na zadatak"**, deep-link `?page=zadaci&openz=<id>`. Modal izostavlja već dodate. **Komentari** idu svim članovima + kreatoru.
+
+### Faza 3 — Alarm/podsetnik (push/Telegram — NIJE „budilnik")
+- **Lični** (svako ko vidi zadatak) + **„ceo tim"** (samo kreator ili Direktor/Inženjer). Modal: `datetime-local` + brzi dugmići (za 1h / sutra 08:00 / na dan roka) + napomena; lista zakazanih sa 🗑.
+- `zadaci_cron.php` (cPanel cron `*/5`) zove **`ZadaciController::posaljiAlarme()`**; preskače završene/obrisane; URL **host-nezavisan** `/mvc/...` (kao raspored). `htaccess` izuzetak `^zadaci_cron\.php$`.
+- ⚠️ **Web push ne može glasan alarm-zvuk** (service worker ne sme audio; `Notification.sound` ukinut; zvuk/jačinu bira korisnik u Android kanalu). Pravi „budilnik" = samo native app. **Odlučeno: idemo sa push/Telegram.** Vidi [[push-notifikacije-stanje]].
+
+### Faza 4 — Fajlovi (max **25 MB**, višestruki upload)
+- **Kače** svi na zadatku (član/kreator/Direktor). **Skidaju samo oni koji su PRIHVATILI** (+ kreator, Direktor, i onaj ko je okačio).
+- Skladište `uploads/zadaci/` sa **nasumičnim** imenom; folder + `.htaccess` (Deny) prave se **automatski** pri prvom uploadu → direktan URL = 403; pristup samo kroz **PHP kapiju** `?page=zadaci&dl=<id>` (`streamFajl`). `?download=1` = attachment, inače inline (pregled kroz deljeni `openModal`, vidi [[deljeni-fajl-modal]]).
+- `zadatak_fajl_add` prima `fajlovi[]` (više odjednom; validacija veličine/tipa po fajlu); **notifikacija jednom** prihvatiocima + kreatoru („📎 Novi fajl na zadatku…"). `zadatak_fajl_delete` (uploader/kreator/Direktor).
+- UI: dugme **„📎 Fajlovi (N)"** u redu akcija (pored ➕ Pozovi) = **indikator + otvara** sekciju (proširi + skroluj). **Dodavanje/brisanje rade DOM-update BEZ reload-a** (zadatak se ne skuplja).
+
+### Izmenjeni / novi fajlovi
+| Fajl | |
+|---|---|
+| `zadaci_clanovi.sql` / `zadaci_alarmi.sql` / `zadaci_fajlovi.sql` | **NOVI** (run once; bitan je clanovi seed) |
+| `zadaci_cron.php` | **NOV** (+ cPanel cron `*/5`) |
+| `app/Models/InterniZadatak.php` | nove tabele u `migrate()` + metode (članovi / alarmi / fajlovi) |
+| `app/Controllers/ZadaciController.php` | vidljivost, AJAX akcije (add/prihvati/pozovi/alarm/fajl), kapija `?dl`, `posaljiAlarme()` |
+| `app/Views/zadaci/index.php` | multi-select, čipovi članova, dugmad Pozovi/⏰/📎, modali (pozovi/alarm), sekcija fajlova |
+| `htaccess` | izuzetak `zadaci_cron.php` |
+
+### Deploy (redosled)
+1. SQL (run once): `zadaci_clanovi.sql` (seed!), `zadaci_alarmi.sql`, `zadaci_fajlovi.sql`.
+2. Upload: model + controller + view + `zadaci_cron.php` + `.htaccess`.
+3. cPanel cron `*/5` za `zadaci_cron.php`.
+4. Produkcija: `upload_max_filesize`/`post_max_size` **≥ 25M** (za velike fajlove). `uploads/zadaci/` mora biti upisiv.
 
 ---
 

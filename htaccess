@@ -21,6 +21,7 @@ RewriteRule ^telegram_webhook\.php$ - [L]
 RewriteRule ^telegram_cron\.php$ - [L]
 RewriteRule ^push_cron\.php$ - [L]
 RewriteRule ^raspored_cron\.php$ - [L]
+RewriteRule ^zadaci_cron\.php$ - [L]
 
 # Ne preusmeravaj postojeće fajlove i foldere
 RewriteCond %{REQUEST_FILENAME} !-f
