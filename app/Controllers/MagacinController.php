@@ -113,7 +113,7 @@ class MagacinController extends \Core\Controller
             FROM magacin_promet mp
             LEFT JOIN gradilista g ON g.id = mp.namenjeno_gradiliste_id
             GROUP BY mp.lokacija, mp.naziv, mp.jm, mp.namenjeno_gradiliste_id
-            HAVING stanje <> 0
+            HAVING stanje > 0
             ORDER BY mp.naziv ASC
         ")->fetchAll(\PDO::FETCH_ASSOC);
 
