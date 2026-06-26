@@ -4,10 +4,10 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZA UJUTRU (resume):** 4 koda + HANDOFF su **deployovani/testirani ali NISU komitovani** (poslednji commit: `c7af19c`). Nezakomitovano: `app/Controllers/DanasController.php`, `app/Controllers/EvidencijaController.php`, `app/Views/danas/index.php`, `app/Views/evidencija/index.php`, `HANDOFF.md`. Preostaje samo: uploadovati **najnoviji `DanasController.php`** (serverska brana protiv duplikata) + test re-unosa, pa **commit svega zajedno** (poruka npr.: „Evidencija Dnevni pregled + Danas: obavezno radno vreme, zasivljavanje ikonica i brana protiv duplikata"). Bez izmene baze.
+> ▶ **ZADNJE:** V. i E. su deployovani, testirani (uklj. serversku branu protiv duplikata) i **komitovani** zajedno sa HANDOFF-om u `0050d3e`. Bez otvorenih stavki na ove dve teme.
 
-V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (osim finalnog testa serverske brane); **NIJE komitovano** — commit ujutru
-E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); **NIJE komitovano** — commit ujutru
+V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (uklj. serversku branu); komitovano (`0050d3e`)
+E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); komitovano (`0050d3e`)
 P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat-whatsappviber-stil)  · *2026-06-21* · ✅ radi, komitovano (`3cd6738`), na produkciji
 0000000. [Raspored — nacrt samo kreatoru (#1) + zabrana unazad (#2)](#0000000-raspored--nacrt-samo-kreatoru-1--zabrana-unazad-2)  · *2026-06-21* · ✅ radi, komitovano (`bdfdd9a`), na produkciji
 000000. [Raspored — poruke (chat) na zadatku: mobilni + notifikacije svuda](#000000-raspored--poruke-chat-na-zadatku-mobilni--notifikacije-svuda)  · *2026-06-21* · ✅ radi (web/Android/iOS), komitovano (`b2aa8d3`), na produkciji
