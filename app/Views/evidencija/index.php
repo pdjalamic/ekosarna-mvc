@@ -605,9 +605,21 @@ function sacuvajDodajMat() {
     fd.append('gradiliste_id', lok.gradiliste_id);
     fd.append('datum',         document.getElementById('dm-datum').value);
     fd.append('komentar',      document.getElementById('dm-komentar').value);
-    fetch('', { method: 'POST', body: fd }).then(r => r.json()).then(d => {
+    var btn = document.querySelector('#modal-dodaj-mat .btn-primary');
+    if (btn) btn.disabled = true;
+    fetch('', { method: 'POST', body: fd }).then(function (r) {
+        if (!r.ok) throw new Error('Server greška (' + r.status + ').');
+        return r.text();
+    }).then(function (txt) {
+        var d;
+        try { d = JSON.parse(txt); }
+        catch (e) { throw new Error('Neočekivan odgovor servera.'); }
         if (d.ok) { location.reload(); }
-        else { err.textContent = d.err || 'Greška.'; err.style.display = 'block'; }
+        else { err.textContent = d.err || 'Greška.'; err.style.display = 'block'; if (btn) btn.disabled = false; }
+    }).catch(function (e) {
+        err.textContent = e.message || 'Greška u komunikaciji sa serverom.';
+        err.style.display = 'block';
+        if (btn) btn.disabled = false;
     });
 }
 

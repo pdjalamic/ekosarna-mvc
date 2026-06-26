@@ -406,7 +406,7 @@ class EvidencijaController extends \Core\Controller
         }
     }
 
-    private function loguj(string $tip, int $zapis_id, string $akcija, array $staro, ?array $novo, int $uid): void
+    private function loguj(string $tip, int $zapis_id, string $akcija, ?array $staro, ?array $novo, int $uid): void
     {
         $this->db->prepare("
             INSERT INTO evidencija_log (tip, zapis_id, akcija, korisnik_id, staro_stanje, novo_stanje)
