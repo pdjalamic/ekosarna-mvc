@@ -811,17 +811,58 @@ PROMPT;
             $stmt = $this->db->prepare("SELECT firma_naziv, broj_dokumenta, datum, pdf_putanja FROM magacin_primke WHERE id=?");
             $stmt->execute([$id]);
             $primka = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$primka) { $this->json(['ok' => false, 'err' => 'Primka nije pronađena.']); }
+
+            // Šta je ova primka donela na stanje, grupisano po lokaciji/artiklu/JM/nameni
+            $ulazi = $this->db->prepare("
+                SELECT mp.lokacija, mp.naziv, mp.jm, mp.namenjeno_gradiliste_id,
+                       ROUND(SUM(mp.kolicina), 3) AS ulaz
+                FROM magacin_promet mp
+                JOIN magacin_stavke s ON s.id = mp.ref_id
+                WHERE mp.izvor = 'primka' AND mp.tip = 'ulaz' AND s.primka_id = ?
+                GROUP BY mp.lokacija, mp.naziv, mp.jm, mp.namenjeno_gradiliste_id
+            ");
+            $ulazi->execute([$id]);
+            $grupe = $ulazi->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Zaštita: ako bi uklanjanje ulaza gurnulo stanje u minus → deo robe je već potrošen/prenet
+            $blokirani = [];
+            $stChk = $this->db->prepare("
+                SELECT COALESCE(SUM(kolicina), 0)
+                FROM magacin_promet
+                WHERE naziv = ? AND jm = ? AND lokacija = ? AND namenjeno_gradiliste_id <=> ?
+            ");
+            foreach ($grupe as $g) {
+                $stChk->execute([$g['naziv'], $g['jm'], $g['lokacija'], $g['namenjeno_gradiliste_id']]);
+                $stanje = (float)$stChk->fetchColumn();
+                if ($stanje - (float)$g['ulaz'] < -0.0005) {
+                    $blokirani[] = $g['naziv'] . ' (' . $g['lokacija'] . ')';
+                }
+            }
+            if ($blokirani) {
+                $this->json(['ok' => false, 'err' =>
+                    'Brisanje nije moguće — sa ovog ulaza je deo robe već potrošen ili prenet: '
+                    . implode(', ', array_unique($blokirani))
+                    . '. Prvo poništi te promete (utrošak/prenos), pa onda obriši ulaz.']);
+            }
+
+            // Čisto je → ukloni pripadajuće 'ulaz' redove iz knjige prometa (pre kaskadnog brisanja stavki)
+            $this->db->prepare("
+                DELETE mp FROM magacin_promet mp
+                JOIN magacin_stavke s ON s.id = mp.ref_id
+                WHERE mp.izvor = 'primka' AND mp.tip = 'ulaz' AND s.primka_id = ?
+            ")->execute([$id]);
+
+            // PDF + sama primka (FK kaskada briše magacin_stavke)
             $putanja = $primka['pdf_putanja'] ?? '';
             if ($putanja && file_exists(UPLOAD_DIR . 'magacin/' . $putanja)) {
                 @unlink(UPLOAD_DIR . 'magacin/' . $putanja);
             }
             $this->db->prepare("DELETE FROM magacin_primke WHERE id=?")->execute([$id]);
 
-            if ($primka) {
-                $this->loguj('primka', $id, 'brisanje',
-                    ['firma' => $primka['firma_naziv'], 'broj_dokumenta' => $primka['broj_dokumenta'], 'datum' => $primka['datum']],
-                    null, $uid);
-            }
+            $this->loguj('primka', $id, 'brisanje',
+                ['firma' => $primka['firma_naziv'], 'broj_dokumenta' => $primka['broj_dokumenta'], 'datum' => $primka['datum']],
+                null, $uid);
             $this->json(['ok' => true]);
         }
     }
