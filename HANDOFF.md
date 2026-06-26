@@ -48,6 +48,7 @@ Veliko proširenje internih Zadataka u 4 faze. Ranije: zadatak je imao **jednog*
 
 ### Faza 3 — Alarm/podsetnik (push/Telegram — NIJE „budilnik")
 - **Lični** (svako ko vidi zadatak) + **„ceo tim"** (samo kreator ili Direktor/Inženjer). Modal: `datetime-local` + brzi dugmići (za 1h / sutra 08:00 / na dan roka) + napomena; lista zakazanih sa 🗑.
+- Na kartici (meta-red, vidljivo i kad je skupljena) **čip „⏰ DD.MM. HH:MM"** za svaki nadolazeći vidljivi podsetnik (timski + lični tvoji); „· tim" za timski; pun datum/napomena u tooltipu.
 - `zadaci_cron.php` (cPanel cron `*/5`) zove **`ZadaciController::posaljiAlarme()`**; preskače završene/obrisane; URL **host-nezavisan** `/mvc/...` (kao raspored). `htaccess` izuzetak `^zadaci_cron\.php$`.
 - ⚠️ **Web push ne može glasan alarm-zvuk** (service worker ne sme audio; `Notification.sound` ukinut; zvuk/jačinu bira korisnik u Android kanalu). Pravi „budilnik" = samo native app. **Odlučeno: idemo sa push/Telegram.** Vidi [[push-notifikacije-stanje]].
 

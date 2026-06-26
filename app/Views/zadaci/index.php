@@ -188,6 +188,23 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
                     <span style="font-size:11px;background:#fef3c7;color:#d97706;border-radius:20px;padding:2px 8px;" title="Čeka prihvatanje">⏳ <?= h($c['korisnik_ime']) ?></span>
                     <?php endif; ?>
                 <?php endforeach; ?>
+                <?php
+                    // Čip za svaki nadolazeći podsetnik koji je korisniku vidljiv (timski + njegovi lični).
+                    $alarmiVid = array_filter($z['alarmi'] ?? [], function($a) use ($uid, $jeDirektor) {
+                        $tim = empty($a['korisnik_id']);
+                        $moj = ((int)$a['postavio_id'] === (int)$uid) || ((int)$a['korisnik_id'] === (int)$uid);
+                        return $tim || $moj || $jeDirektor;
+                    });
+                ?>
+                <?php foreach ($alarmiVid as $a):
+                    $tim = empty($a['korisnik_id']);
+                    $kada = strtotime($a['send_at']);
+                ?>
+                <span style="font-size:11px;background:#fff7ed;color:#c2410c;border:1px solid #fed7aa;border-radius:20px;padding:2px 8px;font-weight:700;"
+                    title="Podsetnik · <?= date('d.m.Y. H:i', $kada) ?><?= $tim ? ' · ceo tim' : ' · lično' ?><?= $a['poruka'] ? ' · '.h($a['poruka']) : '' ?>">
+                    ⏰ <?= date('d.m. H:i', $kada) ?><?= $tim ? ' · tim' : '' ?>
+                </span>
+                <?php endforeach; ?>
                 <span style="font-size:10px;color:var(--muted);margin-left:auto;"><?= h($z['kreirao_ime']) ?> · <?= date('d.m.', strtotime($z['datum_kreiranja'])) ?></span>
             </div>
         </div>
