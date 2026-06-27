@@ -68,6 +68,11 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
 .z2-pgbtn:hover { border-color:#93c5fd;color:#1d4ed8; }
 .z2-pgbtn.active { background:#1d4ed8;color:#fff;border-color:#1d4ed8; }
 .z2-pgbtn:disabled { opacity:.4;cursor:default; }
+@media (max-width:720px) {
+  .z2-card-head { flex-wrap:wrap; }
+  .z2-card-actions { width:100%; align-items:stretch; }
+  .z2-card-actions > div { justify-content:flex-start; }
+}
 </style>
 
 <!-- Topbar -->
@@ -152,7 +157,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
 <div style="background:#fff;border-radius:12px;border:1.5px solid <?= $borderColor ?>;padding:14px 16px;" id="zcard-<?= $z['id'] ?>">
 
     <!-- Header: RB + tekst + akcije -->
-    <div style="display:flex;align-items:flex-start;gap:10px;">
+    <div class="z2-card-head" style="display:flex;align-items:flex-start;gap:10px;">
         <!-- RB + status check -->
         <div style="display:flex;flex-direction:column;align-items:center;gap:4px;flex-shrink:0;">
             <span style="font-size:10px;color:var(--muted);font-weight:700;"><?= $rb ?></span>
@@ -209,7 +214,7 @@ $ukupno_strana = max(1, (int)ceil($ukupno / $po_stranici));
             </div>
         </div>
         <!-- Akcije -->
-        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
+        <div class="z2-card-actions" style="display:flex;flex-direction:column;align-items:flex-end;gap:6px;flex-shrink:0;">
             <div style="display:flex;gap:4px;flex-wrap:wrap;justify-content:flex-end;align-items:center;">
                 <?php if ($moguPrihvatiti): ?>
                 <button class="btn-sm" onclick="prihvatiZadatak(<?= $z['id'] ?>)"

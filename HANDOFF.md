@@ -4,9 +4,9 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZADNJE:** Z. (Zadaci: više članova + pozivanje + alarm + fajlovi) — kod gotov, deployed; 3 nova SQL + cron. Vidi sekciju Z.
+> ▶ **ZADNJE:** Z. (Zadaci: više članova + pozivanje + alarm + fajlovi) — kod gotov, deployed; 3 nova SQL + cron. Vidi sekciju Z (najnoviji Update: mobilni raspored kartice).
 
-Z. [Zadaci — više članova + pozivanje + alarm + fajlovi](#z-zadaci--vise-clanova--pozivanje--alarm--fajlovi)  · *2026-06-27* · ✅ kod gotov/deployed; 3 nova SQL + cron
+Z. [Zadaci — više članova + pozivanje + alarm + fajlovi](#z-zadaci--vise-clanova--pozivanje--alarm--fajlovi)  · *2026-06-27* · ✅ kod gotov/deployed; 3 nova SQL + cron · *Update 2026-06-27:* mobilni raspored kartice
 M. [Magacin + Evidencija — utrošak, stanje, brisanje ulaza](#m-magacin--evidencija--utrosak-stanje-brisanje-ulaza)  · *2026-06-26* · ✅ radi/deployed; komitovano (`6c6d32d`/`f3e9a7c`/`671a457`)
 V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (uklj. serversku branu); komitovano (`0050d3e`)
 E. [Evidencija — „Dnevni pregled" (sumar po danu / timu / gradilištu)](#e-evidencija--dnevni-pregled-sumar-po-danu--timu--gradilištu)  · *2026-06-21* · ✅ radi/deployed (dizajn + boje po maketi); komitovano (`0050d3e`)
@@ -73,6 +73,9 @@ Veliko proširenje internih Zadataka u 4 faze. Ranije: zadatak je imao **jednog*
 2. Upload: model + controller + view + `zadaci_cron.php` + `.htaccess`.
 3. cPanel cron `*/5` za `zadaci_cron.php`.
 4. Produkcija: `upload_max_filesize`/`post_max_size` **≥ 25M** (za velike fajlove). `uploads/zadaci/` mora biti upisiv.
+
+#### Update 2026-06-27 — popravka mobilnog rasporeda kartice (regresija)
+Dodavanjem dugmadi (➕ Pozovi / 📎 Fajlovi / ⏰) header kartice je na telefonu pucao: akcije su (inline `flex`, `nowrap`) otimale širinu pa se naslov cedio na ~jednu reč po redu. Popravka **samo CSS, 1 fajl** `app/Views/zadaci/index.php`: header dobio klasu `z2-card-head`, blok akcija `z2-card-actions`; dodat `@media (max-width:720px)` koji dozvoli prelom (`flex-wrap`) i spušta akcije u **ceo red ispod naslova** (`width:100%`, levo poravnato). Desktop (>720px) netaknut. *(Probali smo i `order:-1` da dugmad budu IZNAD naslova — naručilac odbio kao neprirodno; vraćeno na dugmad ispod.)* **Deploy:** upload tog 1 fajla, bez SQL-a; hard-refresh na telefonu (inline `<style>`).
 
 ---
 
