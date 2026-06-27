@@ -4,9 +4,11 @@ $tabs = [
     'primke'  => '📋 Ulaz robe',
     'nova'    => '➕ Novi ulaz',
 ];
+if (!empty($jeAdmin)) $tabs['kontrola'] = '✅ Kontrola';
 if (!empty($jeAdmin)) $tabs['log'] = '🕘 Istorija';
 $aktivan_tab = $_GET['tab'] ?? 'stanje';
 if ($aktivan_tab === 'log' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // log vide samo Direktor/AT/AF
+if ($aktivan_tab === 'kontrola' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // kontrolu vide samo Direktor/AT/AF
 ?>
 
 <style>
@@ -177,8 +179,9 @@ if ($aktivan_tab === 'log' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // log v
             </td>
             <td style="text-align:center;font-size:12px;color:var(--muted);"><?= count($pr['stavke']) ?></td>
             <td style="text-align:right;white-space:nowrap;">
-                <?php if ($pr['pdf_putanja']):
-                    $docUrl = BASE_URL . '/uploads/magacin/' . $pr['pdf_putanja'];
+                <?php if ($pr['pdf_putanja'] && !empty($jeAdmin)):
+                    // Dokument vide samo Direktor/AT/AF — kroz gejtovanu kapiju (?dok), ne direktno.
+                    $docUrl = BASE_URL . '/?page=magacin&dok=' . (int)$pr['id'];
                     $docExt = strtolower(pathinfo($pr['pdf_putanja'], PATHINFO_EXTENSION));
                     $docTip = in_array($docExt, ['jpg','jpeg','png','gif','webp','bmp']) ? 'img' : 'pdf';
                 ?>
@@ -186,9 +189,11 @@ if ($aktivan_tab === 'log' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // log v
                    onclick="event.stopPropagation();openModal('<?= h($docUrl) ?>','<?= $docTip ?>')"
                    style="margin-right:6px;">📄</button>
                 <?php endif; ?>
+                <?php if (!empty($jeAdmin)): // brisati ulaz mogu samo Direktor/AT/AF ?>
                 <button class="btn-sm del" title="Obriši"
                     onclick="event.stopPropagation();obrisiPrimku(<?= $pr['id'] ?>)"
                     style="margin-right:6px;">🗑</button>
+                <?php endif; ?>
                 <span id="arrow-pr-<?= $i ?>" style="color:var(--muted);font-size:12px;">▼</span>
             </td>
         </tr>
@@ -353,6 +358,45 @@ if ($aktivan_tab === 'log' && empty($jeAdmin)) $aktivan_tab = 'stanje'; // log v
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:12px;line-height:1.5;">
             <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin-bottom:2px;">Pre</div><?= $fmtSnap($l['staro_stanje']) ?></div>
             <div><div style="font-size:10px;text-transform:uppercase;letter-spacing:.04em;color:#c2410c;margin-bottom:2px;">Posle</div><?= $fmtSnap($l['novo_stanje']) ?></div>
+        </div>
+    </div>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
+
+<?php elseif ($aktivan_tab === 'kontrola' && !empty($jeAdmin)): ?>
+<style>
+.k-grupa { background:#fff; border:1.5px solid var(--light2); border-radius:12px; margin-bottom:10px; padding:12px 16px; }
+.k-ime { font-size:14px; font-weight:700; color:#1f2a44; margin-bottom:10px; word-break:break-word; }
+.k-cells { display:flex; flex-wrap:wrap; gap:10px; }
+.k-cell { flex:1 1 90px; min-width:80px; text-align:center; }
+.k-cell .k-lbl { font-size:10px; text-transform:uppercase; letter-spacing:.04em; color:var(--muted); margin-bottom:3px; }
+.k-cell .k-val { font-size:15px; font-weight:700; }
+.k-razlika { background:#fef2f2; border:1.5px solid #fecaca; border-radius:8px; }
+.k-razlika .k-lbl { color:#b91c1c; }
+.k-razlika .k-val { color:#dc2626; }
+</style>
+<div style="margin-bottom:10px;font-size:12px;color:var(--muted);line-height:1.5;">
+    Kontrola unosa: za svaki artikal mora da važi <strong>Ulaz = Stanje + Utrošeno</strong> (zbir preko svih lokacija).
+    Prikazani su <strong>samo artikli gde se račun NE slaže</strong>. Razlika obično dolazi od ručnih izmena stanja (kolona „Korekcije").
+    Vide samo Direktor, AT i AF.
+</div>
+<?php if (empty($kontrola)): ?>
+    <div style="padding:36px 20px;text-align:center;background:#f0fdf4;border:1.5px solid #bbf7d0;border-radius:12px;color:#166534;font-weight:600;">
+        ✅ Sve je OK — ulaz se poklapa sa stanjem + utroškom za sve artikle.
+    </div>
+<?php else: ?>
+<?php $fmtK = fn($v) => number_format((float)$v, 2, ',', '.'); ?>
+<div>
+<?php foreach ($kontrola as $k): ?>
+    <div class="k-grupa">
+        <div class="k-ime">⚠️ <?= h($k['naziv']) ?> <span style="font-weight:400;color:var(--muted);font-size:12px;">(<?= h($k['jm']) ?>)</span></div>
+        <div class="k-cells">
+            <div class="k-cell"><div class="k-lbl">Ulaz</div><div class="k-val" style="color:#1f2a44;"><?= $fmtK($k['ulaz']) ?></div></div>
+            <div class="k-cell"><div class="k-lbl">Utrošeno</div><div class="k-val" style="color:#1f2a44;"><?= $fmtK($k['utroseno']) ?></div></div>
+            <div class="k-cell"><div class="k-lbl">Stanje</div><div class="k-val" style="color:#059669;"><?= $fmtK($k['stanje']) ?></div></div>
+            <div class="k-cell k-razlika"><div class="k-lbl">Razlika</div><div class="k-val"><?= ($k['razlika'] > 0 ? '+' : '') . $fmtK($k['razlika']) ?></div></div>
+            <div class="k-cell"><div class="k-lbl">Korekcije</div><div class="k-val" style="color:<?= abs((float)$k['korekcije']) > 0.001 ? '#c2410c' : 'var(--muted)' ?>;"><?= $fmtK($k['korekcije']) ?></div></div>
         </div>
     </div>
 <?php endforeach; ?>

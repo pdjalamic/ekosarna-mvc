@@ -16,14 +16,27 @@ class MagacinController extends \Core\Controller
     {
         Auth::requireMagacin();
 
+        // Kapija za pregled dokumenta ulaza (?dok=<primka_id>) — samo Direktor/AT/AF.
+        if (isset($_GET['dok'])) {
+            $this->streamDokument((int)$_GET['dok']);
+            return;
+        }
+
         $tab     = $_GET['tab'] ?? 'stanje';
         $jeAdmin = Auth::isAdmin();
         if ($tab === 'log' && !$jeAdmin) $tab = 'stanje'; // log vide samo Direktor/AT/AF
+        if ($tab === 'kontrola' && !$jeAdmin) $tab = 'stanje'; // kontrolu vide samo Direktor/AT/AF
 
         // Uvuci potrošnju iz rasporeda (idempotentno) pre računanja stanja
         $this->syncPotrosnjaIzRasporeda();
 
         $stanjePoLokaciji = $this->getStanjePoLokaciji();
+
+        // Kontrola (reconciliation) — samo admin, samo kad je tab otvoren
+        $kontrola = [];
+        if ($tab === 'kontrola' && $jeAdmin) {
+            $kontrola = $this->getKontrola();
+        }
 
         $primke = $this->db->query("
             SELECT p.*, k.ime AS kreator_ime
@@ -68,7 +81,44 @@ class MagacinController extends \Core\Controller
             ")->fetchAll(\PDO::FETCH_ASSOC);
         }
 
-        $this->view('magacin/index', compact('stanjePoLokaciji', 'primke', 'gradilista', 'tab', 'jeAdmin', 'log'));
+        $this->view('magacin/index', compact('stanjePoLokaciji', 'primke', 'gradilista', 'tab', 'jeAdmin', 'log', 'kontrola'));
+    }
+
+    /**
+     * Kontrola (reconciliation): za svaki artikal (zbir preko SVIH lokacija)
+     * proverava da li se račun slaže: Ulaz − Utrošeno − Stanje treba da bude 0.
+     * Razlika ≠ 0 znači da je bilo ručnih izmena stanja (korekcija) ili je negde
+     * greška u unosu/skidanju. Prenosi između lokacija se globalno poništavaju,
+     * pa ne ulaze u jednačinu. Vraća SAMO problematične artikle (|razlika| > 0.001),
+     * sortirane po veličini razlike.
+     */
+    private function getKontrola(): array
+    {
+        // SQL vraća samo agregate (bez alias-a u HAVING/ORDER BY — MariaDB to ne
+        // dozvoljava za grupne funkcije). Razliku, filter i sort radimo u PHP-u.
+        $rows = $this->db->query("
+            SELECT mp.naziv, mp.jm,
+                   ROUND(SUM(CASE WHEN mp.tip='ulaz'      THEN mp.kolicina ELSE 0 END), 3) AS ulaz,
+                   ROUND(-SUM(CASE WHEN mp.tip='potrosnja' THEN mp.kolicina ELSE 0 END), 3) AS utroseno,
+                   ROUND(SUM(CASE WHEN mp.tip='korekcija' THEN mp.kolicina ELSE 0 END), 3) AS korekcije,
+                   ROUND(SUM(mp.kolicina), 3) AS stanje
+            FROM magacin_promet mp
+            GROUP BY mp.naziv, mp.jm
+            ORDER BY mp.naziv ASC
+        ")->fetchAll(\PDO::FETCH_ASSOC);
+
+        $out = [];
+        foreach ($rows as $r) {
+            // razlika = ulaz − utrošeno − stanje; ≠ 0 znači da račun ne štima
+            $razlika = round((float)$r['ulaz'] - (float)$r['utroseno'] - (float)$r['stanje'], 3);
+            if (abs($razlika) <= 0.001) continue; // prikaži samo problematične
+            $r['razlika'] = $razlika;
+            $out[] = $r;
+        }
+
+        // Najveća odstupanja prva
+        usort($out, fn($a, $b) => abs($b['razlika']) <=> abs($a['razlika']));
+        return $out;
     }
 
     /**
@@ -274,6 +324,13 @@ class MagacinController extends \Core\Controller
 
             $upload_dir = UPLOAD_DIR . 'magacin/';
             if (!is_dir($upload_dir)) mkdir($upload_dir, 0755, true);
+            // Blokiraj direktan HTTP pristup folderu — dokument ide samo kroz ?dok kapiju (admin).
+            $hta = $upload_dir . '.htaccess';
+            if (!is_file($hta)) {
+                @file_put_contents($hta,
+                    "<IfModule mod_authz_core.c>\n  Require all denied\n</IfModule>\n" .
+                    "<IfModule !mod_authz_core.c>\n  Order allow,deny\n  Deny from all\n</IfModule>\n");
+            }
             $safename = date('Ymd_His') . '_' . uniqid() . '.' . $ext;
             $putanja  = $upload_dir . $safename;
             move_uploaded_file($tmp, $putanja);
@@ -808,6 +865,10 @@ PROMPT;
 
         // ── Obriši primku ────────────────────────────────────
         if ($action === 'magacin_obrisi_primku') {
+            // Brisati ulaz mogu samo Direktor/AT/AF.
+            if (!Auth::isAdmin()) {
+                $this->json(['ok' => false, 'err' => 'Brisanje ulaza mogu samo Direktor, AT i AF.']);
+            }
             $stmt = $this->db->prepare("SELECT firma_naziv, broj_dokumenta, datum, pdf_putanja FROM magacin_primke WHERE id=?");
             $stmt->execute([$id]);
             $primka = $stmt->fetch(\PDO::FETCH_ASSOC);
@@ -865,6 +926,52 @@ PROMPT;
                 null, $uid);
             $this->json(['ok' => true]);
         }
+    }
+
+    /**
+     * Strim dokumenta ulaza (otpremnica/račun) uz proveru pristupa.
+     * Videti sme SAMO Direktor/AT/AF (Auth::isAdmin()) — niko drugi, ni operativa
+     * ni korisnici sa vidi_magacin flagom. Fajl se čita sa diska (readfile), pa
+     * .htaccess „Require all denied" nad folderom ne smeta. ?download=1 forsira
+     * preuzimanje (attachment), inače inline (za openModal pregled).
+     */
+    private function streamDokument(int $primka_id): void
+    {
+        if (!Auth::isAdmin()) {
+            http_response_code(403);
+            echo 'Nemate pristup ovom dokumentu. Vide ga samo Direktor, AT i AF.';
+            exit;
+        }
+
+        $st = $this->db->prepare("SELECT pdf_putanja FROM magacin_primke WHERE id=?");
+        $st->execute([$primka_id]);
+        $putanja = (string)$st->fetchColumn();
+        if ($putanja === '') { http_response_code(404); echo 'Dokument ne postoji.'; exit; }
+
+        $path = UPLOAD_DIR . 'magacin/' . $putanja;
+        if (!is_file($path)) { http_response_code(404); echo 'Fajl nije pronađen na disku.'; exit; }
+
+        $ext   = strtolower(pathinfo($putanja, PATHINFO_EXTENSION));
+        $dispo = isset($_GET['download']) ? 'attachment' : 'inline';
+        $naziv = 'dokument-' . $primka_id . '.' . $ext;
+        header('Content-Type: ' . $this->mimeFromExt($ext));
+        header("Content-Disposition: $dispo; filename=\"" . $naziv . "\"");
+        header('Content-Length: ' . filesize($path));
+        header('X-Content-Type-Options: nosniff');
+        header('Cache-Control: private, max-age=0, must-revalidate');
+        readfile($path);
+        exit;
+    }
+
+    /** Grub MIME iz ekstenzije (fallback kad browser ne pošalje tip). */
+    private function mimeFromExt(string $ext): string
+    {
+        $map = [
+            'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
+            'gif' => 'image/gif',  'webp' => 'image/webp', 'bmp' => 'image/bmp',
+            'pdf' => 'application/pdf',
+        ];
+        return $map[$ext] ?? 'application/octet-stream';
     }
 
     private function getImageSystemPrompt(): string
