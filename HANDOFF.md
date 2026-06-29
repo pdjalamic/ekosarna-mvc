@@ -4,8 +4,9 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZADNJE:** Z. (Zadaci: više članova + pozivanje + alarm + fajlovi) — kod gotov, deployed; 3 nova SQL + cron. Vidi sekciju Z (najnoviji Update: mobilni raspored kartice).
+> ▶ **ZADNJE:** Ž. (Danas — datum za slobodan unos + default radno vreme 07–17; Moj profil sakriven ako nije u Zaposlenima) — kod gotov, `php -l` čist, komitovano. Bez SQL-a.
 
+Ž. [Danas — datum kod slobodnog unosa + default radno vreme; „Moj profil" bez Zaposlenog](#z-danas--datum-kod-slobodnog-unosa--default-radno-vreme-moj-profil-bez-zaposlenog)  · *2026-06-29* · ✅ kod gotov/komitovano, bez SQL-a
 Z. [Zadaci — više članova + pozivanje + alarm + fajlovi](#z-zadaci--vise-clanova--pozivanje--alarm--fajlovi)  · *2026-06-27* · ✅ kod gotov/deployed; 3 nova SQL + cron · *Update 2026-06-27:* mobilni raspored kartice
 M. [Magacin + Evidencija — utrošak, stanje, brisanje ulaza](#m-magacin--evidencija--utrosak-stanje-brisanje-ulaza)  · *2026-06-26* · ✅ radi/deployed; komitovano (`6c6d32d`/`f3e9a7c`/`671a457`)
 V. [Danas — obavezno radno vreme (od–do) pri unosu](#v-danas--obavezno-radno-vreme-oddo-pri-unosu)  · *2026-06-21* · ✅ radi/deployed (uklj. serversku branu); komitovano (`0050d3e`)
@@ -22,6 +23,41 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## Ž. Danas — datum kod slobodnog unosa + default radno vreme; „Moj profil" bez Zaposlenog
+
+**Datum:** 2026-06-29 · **Status:** ✅ kod gotov, `php -l` čist, komitovano. **Bez SQL-a.**
+
+Tri sitnije izmene u jednoj sesiji. „Slobodan unos vremena/materijala" su dugmad na stranici **Danas** (`app/Views/danas/index.php`) — to je jedan responsivni view (web + mob), nema posebnog mob fajla.
+
+### Ž1. Slobodan unos — polje „Datum unosa"
+Ranije se slobodan unos uvek snimao sa `date('Y-m-d')` (danas). Traženo: izbor datuma, najviše **14 dana unazad**, bez budućih, i **bez nedelje** (nedeljom se ne radi). Samo dan (ne datetime). **Samo za slobodan unos** — unos vezan za zadatak ostaje na današnjem datumu (tu postoji i zaštita od duplikata, ne dira se).
+- View: zaseban vidljiv blok `vreme-datum-wrap`/`mat-datum-wrap` sa `<input type="date">`. **Bitno:** prvo sam ga greškom stavio u `*-gradiliste-wrap`, a taj blok se u slobodnom unosu **sakriva** (gradilište se bira u zasebnom modalu pre toga) → polje se nije videlo. Izvučen u svoj blok koji se eksplicitno prikazuje u `otvoriSlobodanUnosModal` i krije u `openDanasVreme/openDanasMaterijal`.
+- Default = danas (ako je danas nedelja → ponudi subotu), `max`=danas, `min`=danas−14. Helperi `ymdDanas(offset)`, `jeNedelja(ymd)`, `datumChange()` (na izbor nedelje odmah upozori i očisti). Klijentska provera u `danasAiSacuvaj` (budućnost / 14 dana / nedelja) + slanje `datum` u FormData.
+- Server `DanasController::slobodanDatum()` (izvor istine): prazno → danas; validira format + opseg + nedelju (`N===7`); koristi se u `danas_upisi_vreme` i `danas_upisi_materijal` (za `stavka_id` ostaje `date('Y-m-d')`).
+- ⚠️ **Dva uzroka „Datum ne može biti u budućnosti" (rešena):** (1) skriveno polje slalo browser-datum; (2) `DateTime::createFromFormat('Y-m-d', …)` **zadrži tekuće vreme** (npr. 14:30) → „danas 14:30" > „danas 00:00". Lek: `'!Y-m-d'` (reset na 00:00:00) + „danas" se računa u zoni **Europe/Belgrade** (server može biti UTC).
+
+### Ž2. Slobodan unos vremena — default radno vreme 07:00–17:00
+Kad AI ne prepozna vreme iz teksta, preview od–do je bio prazan. Sad se popuni na **07:00–17:00** (i odmah izračuna sati = 10h); korisnik može izmeniti pre čuvanja. Samo `danasAiPrikaziPreview` u `app/Views/danas/index.php`.
+
+### Ž3. „Moj profil" se ne prikazuje ako korisnik nije u Zaposlenima
+Eksterni saradnici postoje u **Timu** (`admin_korisnici`) ali ne u **Zaposlenima** (`hr_zaposleni`). Klik na „Moj profil" (`page=hr`) im je davao **belu stranu** (HrController redirect na prazan karton `id=0`). „Moj profil" se javlja samo u meniju za teren.
+- Novi `Auth::imaHrProfil()` — uživo `SELECT 1 FROM hr_zaposleni WHERE korisnik_id=?` (try/catch → false; obrazac kao `canMagacin`/`canImenik`).
+- `app/Views/layout/header.php` (web sidebar) i `app/Views/home/index.php` (mob meni): „Moj profil" se prikazuje samo ako `imaHrProfil()`.
+- Napomena: HrController nije diran — direktan URL `?page=hr` i dalje radi redirect; pošto je opcija sklonjena iz oba menija, ne stiže se dotle (po dogovoru sa naručiocem).
+
+### Izmenjeni fajlovi
+| Fajl | |
+|---|---|
+| `app/Views/danas/index.php` | Ž1 (datum blok + JS + validacija) + Ž2 (default 07–17) |
+| `app/Controllers/DanasController.php` | Ž1 server: `slobodanDatum()` (Belgrade tz, `!Y-m-d`, nedelja) u oba upisa |
+| `app/Core/Auth.php` | Ž3 `imaHrProfil()` |
+| `app/Views/layout/header.php` | Ž3 gate „Moj profil" (web) |
+| `app/Views/home/index.php` | Ž3 gate „Moj profil" (mob) |
+
+**Deploy:** upload tih 5 fajlova, **bez SQL-a**. Hard-refresh na telefonu (inline `<script>`/`<style>` u danas view). Test: slobodan unos → vidljivo polje Datum (danas), blokira nedelju/budućnost/>14 dana, default radno vreme 07–17; eksterni korisnik (van Zaposlenih) ne vidi „Moj profil" ni na webu ni na mob.
 
 ---
 

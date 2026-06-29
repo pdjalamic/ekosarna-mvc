@@ -410,8 +410,11 @@ PROMPT;
                     $napomena = implode('; ', array_map(fn($s) => $s['opis'] ?? '', $meta['segmenti']));
                 }
 
+                // Datum: za slobodan unos iz forme (uz proveru), za zadatak — danas.
+                $datum = $stavka_id ? date('Y-m-d') : $this->slobodanDatum();
+
                 $stmt->execute([
-                    $stavka_id, $uid, date('Y-m-d'),
+                    $stavka_id, $uid, $datum,
                     $meta['vreme_od']          ?? null,
                     $meta['vreme_do']          ?? null,
                     isset($meta['ukupno_sati']) ? (float)$meta['ukupno_sati'] : null,
@@ -468,7 +471,8 @@ PROMPT;
                 $meta = json_decode($meta_json, true);
                 if (!$meta || empty($meta['stavke'])) $this->json(['ok' => false, 'err' => 'Nema stavki materijala.']);
 
-                $datum = date('Y-m-d');
+                // Datum: za slobodan unos iz forme (uz proveru), za zadatak — danas.
+                $datum = $stavka_id ? date('Y-m-d') : $this->slobodanDatum();
                 $stmt  = $this->db->prepare("
                     INSERT INTO raspored_materijal (stavka_id, radnik_id, datum, naziv, kolicina, jm, gradiliste_id, gradiliste_naziv)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -587,6 +591,29 @@ PROMPT;
             default:
                 $this->json(['ok' => false, 'err' => 'Nepoznata akcija.']);
         }
+    }
+
+    /**
+     * Datum za slobodan unos: default danas; dozvoljeno do 14 dana unazad, bez budućih, bez nedelje.
+     * Server je izvor istine — na neispravan datum prekida sa JSON greškom.
+     * Računa „danas" u zoni Europe/Belgrade da se poklopi sa korisnikom (server može biti u UTC).
+     */
+    private function slobodanDatum(): string
+    {
+        $tz = new \DateTimeZone('Europe/Belgrade');
+        if (($_POST['datum'] ?? '') === '') return (new \DateTime('now', $tz))->format('Y-m-d');
+
+        $din = trim($_POST['datum']);
+        $d = \DateTime::createFromFormat('!Y-m-d', $din, $tz); // '!' → vreme 00:00:00 (inače zadrži tekuće)
+        if (!$d || $d->format('Y-m-d') !== $din) {
+            $this->json(['ok' => false, 'err' => 'Neispravan datum.']);
+        }
+        $danas = new \DateTime('today', $tz);
+        $min   = (new \DateTime('today', $tz))->modify('-14 days');
+        if ($d > $danas)             $this->json(['ok' => false, 'err' => 'Datum ne može biti u budućnosti.']);
+        if ($d < $min)               $this->json(['ok' => false, 'err' => 'Datum može biti najviše 14 dana unazad.']);
+        if ((int)$d->format('N') === 7) $this->json(['ok' => false, 'err' => 'Nedeljom se ne radi — izaberi drugi dan.']);
+        return $din;
     }
 
     private function sacuvajPreferencu(int $uid, string $kljuc, string $vrednost): void

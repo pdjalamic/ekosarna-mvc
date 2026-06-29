@@ -149,6 +149,14 @@ $gradilista_json = json_encode($gradilista);
                 style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
         </div>
 
+        <!-- Datum (samo za slobodan unos) -->
+        <div id="vreme-datum-wrap" style="display:none;margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Datum unosa</label>
+            <input type="date" id="vreme-datum" onchange="datumChange(this)"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Najviše 14 dana unazad, bez budućih datuma. Nedeljom se ne radi.</div>
+        </div>
+
         <div id="danas-vreme-input-wrap">
             <textarea id="danas-vreme-tekst" rows="4"
                 placeholder="npr. od 7 do 15h, kabliranje rasvete na spratu"
@@ -184,6 +192,14 @@ $gradilista_json = json_encode($gradilista);
             </select>
             <input type="text" id="mat-gradiliste-rucno" placeholder="Naziv gradilišta..."
                 style="display:none;width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
+        </div>
+
+        <!-- Datum (samo za slobodan unos) -->
+        <div id="mat-datum-wrap" style="display:none;margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;display:block;margin-bottom:6px;">Datum unosa</label>
+            <input type="date" id="mat-datum" onchange="datumChange(this)"
+                style="width:100%;border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:13px;outline:none;background:var(--light);box-sizing:border-box;">
+            <div style="font-size:11px;color:var(--muted);margin-top:4px;">Najviše 14 dana unazad, bez budućih datuma. Nedeljom se ne radi.</div>
         </div>
 
         <div id="danas-mat-input-wrap">
@@ -404,7 +420,45 @@ function otвориSlobodanUnosModal(tip) {
     document.getElementById(prevId).style.display    = 'none';
     document.getElementById(prevId).innerHTML        = '';
     document.getElementById(wrapInpId).style.display = 'block';
+
+    // Datum: prikaži polje (samo slobodan unos); default danas (ako je nedelja → subota), max danas, min danas-14.
+    var datumWrapId = tip === 'vreme' ? 'vreme-datum-wrap' : 'mat-datum-wrap';
+    var datumId     = tip === 'vreme' ? 'vreme-datum'      : 'mat-datum';
+    document.getElementById(datumWrapId).style.display = 'block';
+    var datumEl = document.getElementById(datumId);
+    if (datumEl) {
+        var def = ymdDanas(0);
+        if (jeNedelja(def)) def = ymdDanas(-1); // nedeljom se ne radi → ponudi subotu
+        datumEl.value = def;
+        datumEl.max   = ymdDanas(0);
+        datumEl.min   = ymdDanas(-14);
+    }
+
     document.getElementById(modalId).style.display   = 'flex';
+}
+
+// Vrati YYYY-MM-DD za danas + offset dana (lokalno vreme).
+function ymdDanas(offsetDana) {
+    var d = new Date();
+    d.setDate(d.getDate() + (offsetDana || 0));
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var dd = String(d.getDate()).padStart(2, '0');
+    return d.getFullYear() + '-' + m + '-' + dd;
+}
+
+// Da li je YYYY-MM-DD nedelja (radi se Pon–Sub).
+function jeNedelja(ymd) {
+    var d = new Date(ymd + 'T00:00:00');
+    return d.getDay() === 0;
+}
+
+// Provera pri izboru datuma — nedelja se odbija.
+function datumChange(el) {
+    if (el.value && jeNedelja(el.value)) {
+        alert('Nedeljom se ne radi — izaberi drugi dan.');
+        el.value = '';
+        el.focus();
+    }
 }
 
 function getGradilisteZaUnos(tip) {
@@ -472,6 +526,7 @@ function openDanasVreme(stavkaId, naslov) {
     _slobodanUnos = false;
     _danasAktivniStavkaId = stavkaId;
     document.getElementById('vreme-gradiliste-wrap').style.display = 'none';
+    document.getElementById('vreme-datum-wrap').style.display = 'none';
     document.getElementById('danas-vreme-naslov').textContent = '🕐 ' + naslov;
     document.getElementById('danas-vreme-tekst').value = '';
     document.getElementById('danas-vreme-preview').style.display = 'none';
@@ -484,6 +539,7 @@ function openDanasMaterijal(stavkaId, naslov) {
     _slobodanUnos = false;
     _danasAktivniStavkaId = stavkaId;
     document.getElementById('mat-gradiliste-wrap').style.display = 'none';
+    document.getElementById('mat-datum-wrap').style.display = 'none';
     document.getElementById('danas-mat-naslov').textContent = '📦 ' + naslov;
     document.getElementById('danas-mat-tekst').value = '';
     document.getElementById('danas-mat-preview').style.display = 'none';
@@ -575,7 +631,9 @@ function danasAiPrikaziPreview(tip, data) {
     html += '<div style="font-weight:700;font-size:14px;margin-bottom:10px;">'+naslovi[tip]+'</div>';
 
     if (tip === 'vreme') {
-        var _vod = normTime(data.vreme_od), _vdo = normTime(data.vreme_do);
+        // Default radno vreme 07:00–17:00 kad AI ne vrati vreme; korisnik može izmeniti.
+        var _vod = normTime(data.vreme_od) || '07:00', _vdo = normTime(data.vreme_do) || '17:00';
+        if (!data.ukupno_sati) { var _s0 = satiIzmedju(_vod, _vdo); if (_s0 !== null) data.ukupno_sati = _s0; }
         var _inpSt = 'border:1.5px solid var(--light2);border-radius:7px;padding:7px 10px;font-size:15px;outline:none;background:var(--light);';
         html += '<div class="danas-ai-row" style="flex-direction:column;gap:6px;">';
         html += '<span class="danas-ai-label">Radno vreme od–do <span style="color:#dc2626;">*</span></span>';
@@ -682,6 +740,17 @@ function danasAiSacuvaj(tip) {
         data.vreme_od = od; data.vreme_do = dox; data.ukupno_sati = _s; _danasAiData = data;
     }
 
+    // Datum (samo slobodan unos vremena/materijala) — proveri: nije u budućnosti, nije > 14 dana unazad.
+    var datumUnos = '';
+    if (_slobodanUnos && (tip === 'vreme' || tip === 'materijal')) {
+        var datumEl = document.getElementById(tip === 'vreme' ? 'vreme-datum' : 'mat-datum');
+        datumUnos = datumEl ? datumEl.value : '';
+        if (!datumUnos) { alert('Izaberi datum.'); if (datumEl) datumEl.focus(); return; }
+        if (datumUnos > ymdDanas(0))   { alert('Datum ne može biti u budućnosti.'); datumEl.focus(); return; }
+        if (datumUnos < ymdDanas(-14)) { alert('Datum može biti najviše 14 dana unazad.'); datumEl.focus(); return; }
+        if (jeNedelja(datumUnos))      { alert('Nedeljom se ne radi — izaberi drugi dan.'); datumEl.focus(); return; }
+    }
+
     var btn = event.target;
     btn.disabled = true; btn.textContent = '⏳ Čuvam...';
 
@@ -706,6 +775,7 @@ function danasAiSacuvaj(tip) {
         fd.append('meta', JSON.stringify(data));
         fd.append('gradiliste_id', grad.id);
         fd.append('gradiliste_naziv', grad.naziv);
+        if (datumUnos) fd.append('datum', datumUnos);
         fd.append('id', 0);
     }
 

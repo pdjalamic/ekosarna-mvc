@@ -54,10 +54,12 @@
       Poruke
       <span class="badge" id="notif-badge" style="<?= $neprocitane_poruke > 0 ? '' : 'display:none' ?>"><?= $neprocitane_poruke ?></span>
     </a>
+    <?php if (\Core\Auth::imaHrProfil()): ?>
     <a href="<?= BASE_URL ?>/?page=hr" class="<?= $active_page === 'hr' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
       Moj profil
     </a>
+    <?php endif; ?>
     <a href="<?= BASE_URL ?>/?page=evidencija" class="<?= $active_page === 'evidencija' ? 'active' : '' ?>">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
       Evidencija

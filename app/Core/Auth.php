@@ -269,6 +269,15 @@ class Auth
         } catch (\PDOException $e) { return false; }
     }
 
+    public static function imaHrProfil(): bool
+    {
+        try {
+            $r = Database::prepare("SELECT 1 FROM hr_zaposleni WHERE korisnik_id=? LIMIT 1");
+            $r->execute([self::id()]);
+            return (bool)$r->fetchColumn();
+        } catch (\PDOException $e) { return false; }
+    }
+
     public static function canImenik(): bool
     {
         if (self::isAdmin()) return true;

@@ -48,8 +48,10 @@ if ($je_direktor) {
         ['poruke',     'Poruke',     $ico['poruke'],     'home-badge-poruke',  $counts['poruke']  ?? 0, '#0d9488', 'Komunikacija i razmena poruka'],
         ['nabavka',    'Nabavka',    $ico['nabavka'],    'home-badge-nabavka', $counts['nabavka'] ?? 0, '#ea580c', 'Zahtevi i porudžbine nabavke'],
         ['evidencija', 'Evidencija', $ico['evidencija'], null,                 0,                       '#16a34a', 'Evidencija i izveštaji'],
-        ['hr',         'Moj profil', $ico['profil'],     null,                 0,                       '#0891b2', 'Tvoji lični podaci'],
     ];
+    if (\Core\Auth::imaHrProfil()) {
+        $tiles[] = ['hr', 'Moj profil', $ico['profil'], null, 0, '#0891b2', 'Tvoji lični podaci'];
+    }
     if (\Core\Auth::canMagacin()) {
         $tiles[] = ['magacin', 'Magacin', $ico['magacin'], null, 0, '#475569', 'Stanje i kretanje magacina'];
     }
