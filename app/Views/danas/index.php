@@ -2,23 +2,30 @@
 $dani_nazivi = ['Ned','Pon','Uto','Sri','Čet','Pet','Sub'];
 $dani_puni   = ['Nedjelja','Ponedeljak','Utorak','Sreda','Četvrtak','Petak','Subota'];
 $gradilista_json = json_encode($gradilista);
+$danas_ymd   = date('Y-m-d');
+// Podrazumevano proširen dan: današnji ako je u prikazanoj nedelji, inače izabrani.
+$otvoreniDan = in_array($danas_ymd, $datumi, true) ? $danas_ymd : $datum;
+$subota      = end($datumi);
 ?>
 
 <div class="topbar-admin">
-    <div class="page-title">📅 Moj raspored</div>
+    <div class="page-title">📅 Raspored</div>
 </div>
 
-<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
-    <a href="?page=danas&datum=<?= date('Y-m-d', strtotime($datum . ' -1 day')) ?>" class="btn-sm">←</a>
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+    <a href="?page=danas&datum=<?= date('Y-m-d', strtotime($datum . ' -7 days')) ?>" class="btn-sm" title="Prošla nedelja">←</a>
+    <span style="font-size:13px;font-weight:700;color:var(--blue);white-space:nowrap;">
+        <?= date('d.m', strtotime($datumi[0])) ?> — <?= date('d.m.Y', strtotime($subota)) ?>
+    </span>
+    <a href="?page=danas&datum=<?= date('Y-m-d', strtotime($datum . ' +7 days')) ?>" class="btn-sm" title="Sledeća nedelja">→</a>
     <form method="GET" style="display:flex;align-items:center;gap:6px;">
         <input type="hidden" name="page" value="danas">
         <input type="date" name="datum" value="<?= h($datum) ?>"
                onchange="this.form.submit()"
                style="border:1.5px solid var(--light2);border-radius:8px;padding:6px 10px;font-size:13px;outline:none;background:#fff;">
     </form>
-    <a href="?page=danas&datum=<?= date('Y-m-d', strtotime($datum . ' +1 day')) ?>" class="btn-sm">→</a>
-    <?php if ($datum !== date('Y-m-d')): ?>
-    <a href="?page=danas" class="btn-sm mark">Danas</a>
+    <?php if (!in_array($danas_ymd, $datumi, true)): ?>
+    <a href="?page=danas" class="btn-sm mark">Ova nedelja</a>
     <?php endif; ?>
 </div>
 
@@ -34,75 +41,111 @@ $gradilista_json = json_encode($gradilista);
     </button>
 </div>
 
-<div style="display:flex;flex-direction:column;gap:14px;">
+<div style="display:flex;flex-direction:column;gap:10px;">
 <?php foreach ($datumi as $idx => $d):
     $stavke    = $dani[$d] ?? [];
-    $jeDanas   = ($d === date('Y-m-d'));
-    $jeIzabran = ($d === $datum);
+    $jeDanas   = ($d === $danas_ymd);
     $dow       = (int)date('w', strtotime($d));
-    $boja_dana = $jeIzabran ? '#1a3a6e' : ($jeDanas ? '#2563eb' : '#94a3b8');
+    $otvoren   = ($d === $otvoreniDan);
+    $broj      = count($stavke);
+    $imamMoj   = false;
+    foreach ($stavke as $s) { if (!empty($s['je_moj'])) { $imamMoj = true; break; } }
+    $boja_dana = $jeDanas ? '#2563eb' : '#64748b';
 ?>
-<div style="border-radius:14px;border:2px solid <?= $boja_dana ?><?= $jeIzabran ? '' : '44' ?>;overflow:hidden;">
-    <div style="background:<?= $boja_dana ?><?= $jeIzabran ? '' : '18' ?>;padding:10px 14px;display:flex;align-items:center;justify-content:space-between;">
-        <div>
-            <span style="font-size:14px;font-weight:700;color:<?= $jeIzabran ? '#fff' : $boja_dana ?>;"><?= $dani_puni[$dow] ?></span>
-            <span style="font-size:12px;color:<?= $jeIzabran ? '#ffffffaa' : '#64748b' ?>;margin-left:8px;"><?= date('d.m.Y', strtotime($d)) ?></span>
+<div style="border-radius:14px;border:1.5px solid <?= $boja_dana ?>44;overflow:hidden;">
+    <!-- Zaglavlje dana: klik = proširi/skupi -->
+    <div onclick="toggleDanasDan(<?= $idx ?>)" style="cursor:pointer;user-select:none;background:<?= $boja_dana ?>14;padding:11px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;">
+        <div style="display:flex;align-items:center;gap:8px;min-width:0;">
+            <span id="danas-arrow-<?= $idx ?>" style="font-size:12px;color:<?= $boja_dana ?>;width:14px;display:inline-block;flex-shrink:0;"><?= $otvoren ? '▼' : '▶' ?></span>
+            <span style="font-size:14px;font-weight:700;color:<?= $boja_dana ?>;"><?= $dani_puni[$dow] ?></span>
+            <span style="font-size:12px;color:#64748b;"><?= date('d.m.Y', strtotime($d)) ?></span>
+            <?php if ($imamMoj): ?><span title="Ti si na zadatku ovog dana" style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block;flex-shrink:0;"></span><?php endif; ?>
         </div>
-        <?php if ($jeDanas): ?>
-        <span style="background:#fff;color:#2563eb;border-radius:20px;font-size:10px;font-weight:700;padding:2px 10px;">DANAS</span>
-        <?php endif; ?>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0;">
+            <span style="font-size:11px;color:#64748b;"><?= $broj ?> <?= $broj == 1 ? 'zadatak' : 'zadataka' ?></span>
+            <?php if ($jeDanas): ?><span style="background:#2563eb;color:#fff;border-radius:20px;font-size:10px;font-weight:700;padding:2px 10px;">DANAS</span><?php endif; ?>
+        </div>
     </div>
-    <div style="padding:10px 12px;background:#fff;display:flex;flex-direction:column;gap:8px;">
+    <!-- Telo dana -->
+    <div id="danas-body-<?= $idx ?>" style="padding:10px 12px;background:#fff;flex-direction:column;gap:8px;display:<?= $otvoren ? 'flex' : 'none' ?>;">
     <?php if (empty($stavke)): ?>
         <p style="color:var(--muted);font-size:13px;font-style:italic;padding:4px 0;margin:0;">Nema zadataka</p>
     <?php else: ?>
         <?php foreach ($stavke as $s):
             $jeOdgovoran = ((int)($s['odgovoran_id'] ?? 0) === (int)$uid);
+            $jeRadnik    = !empty($s['je_radnik']);
+            $jeMoj       = !empty($s['je_moj']);
+            $opis        = $s['opis'] ?? '';
+            $opisDug     = mb_strlen($opis) > 120;
+            // Da li je odgovoran već među radnicima (da ga ne dupliramo kao zaseban čip)?
+            $odgUradnicima = false;
+            foreach (($s['radnici'] ?? []) as $r) {
+                if ((int)$r['radnik_id'] === (int)($s['odgovoran_id'] ?? 0)) { $odgUradnicima = true; break; }
+            }
         ?>
-        <div class="danas-stavka" style="border-left:4px solid <?= h($s['boja']) ?>;margin:0;">
+        <div class="danas-stavka" style="border-left:4px solid <?= h($s['boja']) ?>;margin:0;<?= $jeMoj ? 'background:#dcfce7;' : '' ?>">
             <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:6px;">
-                <div>
-                    <?php if ($s['vreme_od'] || $s['vreme_do']): ?>
-                    <div style="font-size:12px;font-weight:700;color:var(--blue);margin-bottom:2px;">
-                        🕐 <?= $s['vreme_od'] ? substr($s['vreme_od'],0,5) : '' ?>
-                        <?= $s['vreme_od'] && $s['vreme_do'] ? ' – ' : '' ?>
-                        <?= $s['vreme_do'] ? substr($s['vreme_do'],0,5) : '' ?>
-                    </div>
-                    <?php endif; ?>
+                <div style="min-width:0;">
                     <?php if ($s['gradiliste_naziv']): ?>
                     <div style="font-size:14px;font-weight:700;color:var(--blue);">🏗️ <?= h($s['gradiliste_naziv']) ?></div>
                     <?php endif; ?>
                 </div>
                 <div style="display:flex;gap:5px;flex-shrink:0;">
-                    <!-- 💬 Poruke -->
+                    <!-- 💬 Poruke (svi mogu pregled/učešće) -->
                     <button type="button" class="btn-sm" id="dp-btn-<?= $s['id'] ?>"
                         onclick="openDanasThread(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
                         title="Poruke" style="position:relative;background:#eef2ff;color:#4338ca;border-color:#c7d2fe;">
                         💬<?php if ($s['poruka_count'] > 0): ?><span style="background:#6b7280;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:3px;font-weight:700;"><?= $s['poruka_count'] ?></span><?php endif; ?><?php if (!empty($s['nova_poruka'])): ?><span style="background:#e53935;color:#fff;border-radius:99px;font-size:10px;padding:1px 5px;margin-left:2px;font-weight:700;"><?= $s['nove_poruke_count'] ?></span><?php endif; ?>
                     </button>
+                    <?php if ($jeRadnik): ?>
                     <button type="button" class="btn-sm"
                         title="<?= ($s['vreme_upisano'] ?? false) ? 'Vreme već upisano za danas' : 'Upiši vreme' ?>"
                         <?= ($s['vreme_upisano'] ?? false) ? 'disabled' : "onclick=\"openDanasVreme({$s['id']}, '".h(addslashes($s['gradiliste_naziv'] ?? 'Stavka'))."')\"" ?>
                         style="background:<?= ($s['vreme_upisano'] ?? false) ? '#f1f5f9' : '#eff6ff' ?>;color:<?= ($s['vreme_upisano'] ?? false) ? '#94a3b8' : '#1d4ed8' ?>;border-color:<?= ($s['vreme_upisano'] ?? false) ? '#e2e8f0' : '#bfdbfe' ?>;">🕐<?= ($s['vreme_upisano'] ?? false) ? ' ✓' : '' ?></button>
+                    <?php endif; ?>
                     <?php if ($jeOdgovoran): ?>
                     <button type="button" class="btn-sm"
                         title="<?= ($s['materijal_upisan'] ?? false) ? 'Materijal već upisan za danas' : 'Upiši materijal' ?>"
                         <?= ($s['materijal_upisan'] ?? false) ? 'disabled' : "onclick=\"openDanasMaterijal({$s['id']}, '".h(addslashes($s['gradiliste_naziv'] ?? 'Stavka'))."')\"" ?>
                         style="background:<?= ($s['materijal_upisan'] ?? false) ? '#f1f5f9' : '#fffbeb' ?>;color:<?= ($s['materijal_upisan'] ?? false) ? '#94a3b8' : '#b45309' ?>;border-color:<?= ($s['materijal_upisan'] ?? false) ? '#e2e8f0' : '#fde68a' ?>;">📦<?= ($s['materijal_upisan'] ?? false) ? ' ✓' : '' ?></button>
                     <?php endif; ?>
+                    <?php if ($jeRadnik): ?>
                     <button type="button" class="btn-sm"
                         title="Zahtev za nabavku"
                         onclick="openDanasNabavka(<?= $s['id'] ?>, '<?= h(addslashes($s['gradiliste_naziv'] ?? 'Stavka')) ?>')"
                         style="background:#f0fdf4;color:#15803d;border-color:#bbf7d0;">🛒</button>
+                    <?php endif; ?>
                 </div>
             </div>
-            <?php if ($s['opis']): ?>
-            <div style="font-size:13px;color:#333;line-height:1.5;background:#f8faff;border-radius:6px;padding:8px 10px;"><?= nl2br(h($s['opis'])) ?></div>
+            <!-- Ceo tim na zadatku -->
+            <?php if (!empty($s['radnici']) || (!empty($s['odgovoran_id']) && !$odgUradnicima)): ?>
+            <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+                <?php foreach ($s['radnici'] as $r): $rOdg = ((int)($s['odgovoran_id'] ?? 0) === (int)$r['radnik_id']); ?>
+                <span style="font-size:11px;border-radius:20px;padding:2px 8px;<?= $rOdg ? 'background:#fef3c7;color:#92400e;font-weight:700;' : 'background:#f1f5f9;color:#475569;' ?>">
+                    <?= $rOdg ? '📦' : '👷' ?> <?= h($r['ime']) ?><?php if ($r['vreme_od']): ?> <span style="opacity:.75;"><?= substr($r['vreme_od'],0,5) ?>–<?= $r['vreme_do'] ? substr($r['vreme_do'],0,5) : '' ?></span><?php endif; ?>
+                </span>
+                <?php endforeach; ?>
+                <?php if (!empty($s['odgovoran_id']) && !$odgUradnicima && !empty($s['odgovoran_ime'])): ?>
+                <span style="font-size:11px;border-radius:20px;padding:2px 8px;background:#fef3c7;color:#92400e;font-weight:700;">📦 <?= h($s['odgovoran_ime']) ?></span>
+                <?php endif; ?>
+            </div>
+            <?php endif; ?>
+            <?php if ($opis !== ''): ?>
+            <div style="font-size:13px;color:#333;line-height:1.5;background:#f8faff;border-radius:6px;padding:8px 10px;">
+                <?php if ($opisDug): ?>
+                <span id="danas-opis-kratki-<?= $s['id'] ?>"><?= h(mb_substr($opis, 0, 120)) ?>…
+                    <button type="button" onclick="toggleDanasOpis(<?= $s['id'] ?>)" style="background:none;border:none;color:var(--bluem);cursor:pointer;font-size:12px;font-weight:700;padding:0 2px;">▼ više</button>
+                </span>
+                <span id="danas-opis-pun-<?= $s['id'] ?>" style="display:none;"><?= nl2br(h($opis)) ?>
+                    <button type="button" onclick="toggleDanasOpis(<?= $s['id'] ?>)" style="background:none;border:none;color:var(--bluem);cursor:pointer;font-size:12px;font-weight:700;padding:0 2px;">▲ manje</button>
+                </span>
+                <?php else: ?>
+                <?= nl2br(h($opis)) ?>
+                <?php endif; ?>
+            </div>
             <?php endif; ?>
             <?php if ($jeOdgovoran): ?>
             <div style="margin-top:6px;font-size:11px;color:#b45309;background:#fffbeb;border-radius:5px;padding:3px 9px;display:inline-block;">📦 Ti si odgovoran za unos materijala</div>
-            <?php elseif (!empty($s['odgovoran_id']) && !empty($s['odgovoran_ime'])): ?>
-            <div style="margin-top:6px;font-size:11px;color:#64748b;background:#f1f5f9;border-radius:5px;padding:3px 9px;display:inline-block;">📦 <?= h($s['odgovoran_ime']) ?> odgovoran za unos materijala</div>
             <?php endif; ?>
         </div>
         <?php endforeach; ?>
@@ -303,6 +346,25 @@ var _danasAiData          = null;
 var _slobodanTip          = '';
 var _slobodanGrad         = { id: 0, naziv: '' };
 var _gradilista           = <?= $gradilista_json ?>;
+
+// ── Harmonika po danima + proširivanje teksta ────────────────
+function toggleDanasDan(idx) {
+    var body  = document.getElementById('danas-body-' + idx);
+    var arrow = document.getElementById('danas-arrow-' + idx);
+    if (!body) return;
+    var otvoren = body.style.display !== 'none';
+    body.style.display = otvoren ? 'none' : 'flex';
+    if (arrow) arrow.textContent = otvoren ? '▶' : '▼';
+}
+
+function toggleDanasOpis(id) {
+    var kratki = document.getElementById('danas-opis-kratki-' + id);
+    var pun    = document.getElementById('danas-opis-pun-' + id);
+    if (!kratki || !pun) return;
+    var otvoren = pun.style.display !== 'none';
+    kratki.style.display = otvoren ? '' : 'none';
+    pun.style.display    = otvoren ? 'none' : '';
+}
 
 // ── Slobodan unos ────────────────────────────────────────────
 function openSlobodanUnos(tip) {

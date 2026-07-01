@@ -179,7 +179,20 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
                 <?php endif; ?>
             </td>
             <td style="font-size:13px;vertical-align:middle;">
-                <?= $s['opis'] ? h(mb_substr($s['opis'], 0, 100)) . (mb_strlen($s['opis']) > 100 ? '...' : '') : '—' ?>
+                <?php if (!empty($s['opis'])):
+                    $opis_dug = mb_strlen($s['opis']) > 100;
+                ?>
+                    <?php if ($opis_dug): ?>
+                    <span id="rs-opis-kratki-<?= $s['id'] ?>"><?= h(mb_substr($s['opis'], 0, 100)) ?>…
+                        <button type="button" class="rs-opis-toggle" onclick="toggleRsOpis(<?= $s['id'] ?>)">▼ više</button>
+                    </span>
+                    <span id="rs-opis-pun-<?= $s['id'] ?>" style="display:none;"><?= nl2br(h($s['opis'])) ?>
+                        <button type="button" class="rs-opis-toggle" onclick="toggleRsOpis(<?= $s['id'] ?>)">▲ manje</button>
+                    </span>
+                    <?php else: ?>
+                    <?= nl2br(h($s['opis'])) ?>
+                    <?php endif; ?>
+                <?php else: ?>—<?php endif; ?>
             </td>
             <td style="font-size:12px;vertical-align:middle;">
                 <?php foreach ($s['radnici'] as $r): ?>
@@ -336,6 +349,7 @@ $je_buduca = $nedelja && strtotime($ponedeljak) > strtotime('monday this week');
 .rs-tabela td { padding:8px 12px;border-bottom:1px solid var(--light2);vertical-align:middle;font-size:13px; }
 .rs-tabela tbody tr:last-child td { border-bottom:none; }
 .rs-red:hover td { background:#f8faff !important; }
+.rs-opis-toggle { background:none;border:none;color:var(--bluem);cursor:pointer;font-size:12px;font-weight:700;padding:0 2px;white-space:nowrap; }
 .rs-el-radnik-red { display:flex;align-items:center;gap:8px;white-space:nowrap;margin-bottom:2px; }
 .rs-el-ime-txt { font-size:12px; }
 .rs-el-vreme-txt { font-size:11px;color:var(--muted);background:var(--light);border-radius:4px;padding:1px 6px; }
@@ -401,6 +415,15 @@ var _rsPorukeInterval = null;
 var _rsPendingData   = null;
 var _rsVremena       = {};
 var _rsOdgovoranTrenutni = 0; // trenutno izabran odgovoran (da se zadrži u meniju i kad je „vođa" zauzeta)
+
+function toggleRsOpis(id) {
+    var kratki = document.getElementById('rs-opis-kratki-' + id);
+    var pun    = document.getElementById('rs-opis-pun-' + id);
+    if (!kratki || !pun) return;
+    var otvoren = pun.style.display !== 'none';
+    kratki.style.display = otvoren ? '' : 'none';
+    pun.style.display    = otvoren ? 'none' : '';
+}
 
 function osveziDodajMeni() {
     var sel = document.getElementById('rs-dodaj-radnika');

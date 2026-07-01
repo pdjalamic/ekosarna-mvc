@@ -4,8 +4,9 @@
 > Kad nastavljamo rad, OVO se otvara prvo.
 
 ## Sadržaj
-> ▶ **ZADNJE:** Ž. (Danas — datum za slobodan unos + default radno vreme 07–17; Moj profil sakriven ako nije u Zaposlenima) — kod gotov, `php -l` čist, komitovano. Bez SQL-a.
+> ▶ **ZADNJE:** R. („Danas" redizajn — harmonika po danima, svi vide sve zadatke + ceo tim + odgovoran, proširivanje teksta, zelena pozadina za svoje) — kod gotov, `php -l` čist. Bez SQL-a. **Čeka deploy/test.**
 
+R. [„Danas" redizajn — harmonika po danima (svi vide sve + ceo tim + proširenje + boja)](#r-danas-redizajn--harmonika-po-danima-svi-vide-sve--ceo-tim--prosirenje--boja)  · *2026-06-30* · 🔜 kod gotov, `php -l` čist, bez SQL-a, čeka deploy/test
 Ž. [Danas — datum kod slobodnog unosa + default radno vreme; „Moj profil" bez Zaposlenog](#z-danas--datum-kod-slobodnog-unosa--default-radno-vreme-moj-profil-bez-zaposlenog)  · *2026-06-29* · ✅ kod gotov/komitovano, bez SQL-a
 Z. [Zadaci — više članova + pozivanje + alarm + fajlovi](#z-zadaci--vise-clanova--pozivanje--alarm--fajlovi)  · *2026-06-27* · ✅ kod gotov/deployed; 3 nova SQL + cron · *Update 2026-06-27:* mobilni raspored kartice
 M. [Magacin + Evidencija — utrošak, stanje, brisanje ulaza](#m-magacin--evidencija--utrosak-stanje-brisanje-ulaza)  · *2026-06-26* · ✅ radi/deployed; komitovano (`6c6d32d`/`f3e9a7c`/`671a457`)
@@ -23,6 +24,48 @@ P. [Poruke — redizajn u chat (WhatsApp/Viber stil)](#p-poruke--redizajn-u-chat
 2. [Magacin — mobilni: otvaranje stavki + dokument u modalu](#2-magacin--mobilni-otvaranje-stavki--dokument-u-modalu)  · *2026-06-20* · ✅ radi (web + mob), komitovano
 3. [Zadaci — notifikacije + chat + klik notifikacije + kontrola roka](#3-zadaci--notifikacije--chat-komentari)  · *2026-06-20* · ✅ radi (klik notifikacije + rok potvrđeni na uređaju)
 4. [Push notifikacije — stanje](#4-push-notifikacije--stanje)  · *2026-06-16* · ✅ radi na produkciji, ostalo poliranje
+
+---
+
+## R. „Danas" redizajn — harmonika po danima (svi vide sve + ceo tim + proširenje + boja)
+
+**Datum:** 2026-06-30 · **Status:** 🔜 kod gotov, `php -l` čist. **Bez SQL-a.** Čeka deploy/test.
+
+Prvi feedback sa terena (firma počela da koristi app). **Bitno — terminologija:** „Raspored" o kom je naručilac pričao je **ekran „Danas"** (`?page=danas`), tj. ekran koji teren svakodnevno otvara — NE kancelarijski nedeljni Raspored (`?page=raspored`, `requireKancelarija`). Teren ne ulazi na kancelarijski Raspored. Modul **Zadaci** (interni zadaci) se NE dira.
+
+> ⏪ **Kancelarijski Raspored (`?page=raspored`):** `RasporedController.php` = original (sort/`je_moj` uklonjen — tamo nije trebalo). U `raspored/index.php` **zadržano SAMO proširivanje teksta** ▼ (kratki/pun `<span>` + `toggleRsOpis` + `.rs-opis-toggle`), jer direktor čita raspored na toj tabeli i dug opis se sekao na 100 zn. **Sort „moji prvo" i zelena pozadina NISU na ovoj tabeli** (to je samo na „Dnevni raspored"/`?page=danas`). *(Direktor je u testu otvorio baš ovu tabelu, ne „Dnevni raspored" — otud „ne vidi ceo tekst".)*
+
+### Šta je „Danas" radio pre (problem)
+DanasController je prikazivao zadatak **samo ako je ulogovani radnik ili odgovoran** (`AND (rr.radnik_id=? OR rs.odgovoran_id=?)`), nije učitavao ostale članove tima, a opis se prikazivao ceo (nema sečenja → otud „nema strelice"). Tako monter nije video tuđe zadatke ni ko mu je u ekipi.
+
+### Šta sad radi (redizajn — 2 nivoa proširenja)
+- **Cela nedelja (Pon–Sub) kao harmonika:** svaki dan = sklopiva sekcija (`toggleDanasDan(idx)`); **podrazumevano proširen samo današnji dan** (`$otvoreniDan` = danas ako je u prikazanoj nedelji, inače izabrani `$datum`), ostali skupljeni. Zaglavlje: strelica ▼/▶, naziv+datum, broj zadataka, **zelena tačkica** ako je korisnik na nekom zadatku tog dana, „DANAS" badge.
+- **Svi vide sve zadatke:** uklonjen filter „samo moji" — prikazuju se SVE objavljene stavke dana.
+- **Ceo tim po zadatku:** čipovi svih radnika (👷 + vreme), odgovoran 📦 (žuti); ako je odgovoran „vođa" van ekipe, dodatni 📦 čip.
+- **Proširivanje dugog opisa:** >120 znakova → skraćeno + „▼ više" / „▲ manje" (`toggleDanasOpis(id)`; dva `<span>` `danas-opis-kratki/pun-<id>`).
+- **Zelena podloga** (`#dcfce7`) na kartici gde je ulogovani korisnik (`je_moj` = radnik ILI odgovoran).
+- **Sort u okviru dana:** prvo zadaci gde je ulogovani korisnik (`je_moj`), pa ostali (`array_merge($moji,$ostali)`; redosled inače ostaje).
+- **Unos gejtovan (tuđi zadaci = samo gledanje):** 🕐 Upiši vreme i 🛒 nabavka samo ako je **radnik** (`je_radnik`); 📦 materijal samo ako je **odgovoran**; 💬 poruke svima (pregled/učešće; server ionako gejtuje upis). Serverske provere upisa (DanasController linije ~367/448) ostaju netaknute — drugi sloj zaštite.
+- Default `$datum` promenjen sa `najblizjiDanSaRasporedom()` na **danas** (metoda ostala u fajlu, nekorišćena). Navigacija ←/→ sad pomera **nedelju** (±7 dana); naslov „📅 Raspored".
+
+### Izmenjeni fajlovi (2, bez SQL-a)
+| Fajl | Izmena |
+|---|---|
+| `app/Controllers/DanasController.php` | `$datumi` = cela nedelja (Pon–Sub); default `$datum`=danas; upit bez filtera „samo moji"; po stavci učita `radnici` (ceo tim) + flagovi `je_radnik`/`je_moj`; `unset($s)` posle `&$s` foreach. |
+| `app/Views/danas/index.php` | Harmonika po danima (`toggleDanasDan`), telo `display:none` osim otvorenog; ceo tim čipovi (👷/📦); opis proširenje (`toggleDanasOpis`, prag 120); zelena `#dcfce7` za `je_moj`; dugmad gejtovana po `je_radnik`/`je_odgovoran`; naslov + nedeljna navigacija. |
+
+**Deploy:** upload ta 2 fajla, bez SQL-a. Hard-refresh na telefonu (inline `<script>`). Test: otvori „Danas" → tekuća nedelja, današnji dan proširen, ostali skupljeni (klik proširi); svaki dan pokazuje SVE zadatke + ceo tim + ko je 📦 odgovoran; dug opis → „▼ više"; tvoji zadaci zeleni; na tuđem zadatku nema 🕐/📦/🛒 (samo 💬).
+
+#### Update 2026-06-30 — prikaz dostupan svim ulogama (meni)
+Naručilac: ovaj harmonika prikaz da imaju i Direktor/AT/AF/operativa (uz ista pravila ko sme da menja — automatski poštovano jer su dugmad gejtovana po `je_radnik`/`je_odgovoran`, a admini nisu radnici → samo gledaju). `?page=danas` ionako dozvoljava sve uloge (`requireLogin`, bez role-gate u Routeru). **Odluka:** dodata **zasebna** stavka „Dnevni raspored" (kancelarijski „Raspored"/tabela za planiranje ostaje netaknut). Teren i dalje ima samo svoj „Raspored" (= `?page=danas`).
+| Fajl | Izmena |
+|---|---|
+| `app/Views/layout/header.php` | U admin/operater sidebar: nova stavka „Dnevni raspored" → `?page=danas` (odmah ispod „Raspored"). |
+| `app/Views/home/index.php` | Mobilne pločice: dodata „Dnevni raspored" (`danas`) u Direktor blok (+ `$primarni` 6→7) i u else blok (AT/AF/operativa). |
+**Deploy:** + ta 2 fajla (ukupno 4 sa controller/view iznad), bez SQL-a.
+
+#### Update 2026-06-30 (b) — ceo tekst i na kancelarijskoj tabeli „Raspored rada"
+Direktor čita raspored na kancelarijskoj tabeli (`?page=raspored`), gde se opis sekao na 100 zn. Dodato **samo proširivanje teksta** ▼ („više"/„manje") u `app/Views/raspored/index.php` (kratki/pun `<span>`, `toggleRsOpis`, `.rs-opis-toggle`). **Bez** sorta/boje na toj tabeli. **Deploy:** + `raspored/index.php` (ukupno 5 fajlova u celoj „R." temi), bez SQL-a.
 
 ---
 

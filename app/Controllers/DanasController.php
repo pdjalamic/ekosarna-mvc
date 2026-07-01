@@ -21,28 +21,21 @@ class DanasController extends \Core\Controller
 
         $uid = Auth::id();
 
-        if (isset($_GET['datum'])) {
-            $datum = $_GET['datum'];
-        } else {
-            $datum = $this->najblizjiDanSaRasporedom($uid);
-        }
+        // Podrazumevano: tekuća nedelja sa današnjim danom proširenim (svi vide sve zadatke).
+        $datum = isset($_GET['datum']) ? $_GET['datum'] : date('Y-m-d');
 
-$datumi = [];
-$dodato = 0;
-$offset = -1;
-while ($dodato < 4) {
-    $d = date('Y-m-d', strtotime($datum . " $offset days"));
-    if (date('w', strtotime($d)) !== '0') {
-        $datumi[] = $d;
-        $dodato++;
-    }
-    $offset++;
-}
+        // Cela tekuća nedelja (Pon–Sub) dana koji se gleda — prikaz po danima (harmonika).
+        $tsSel = strtotime($datum);
+        $dowSel = (int)date('N', $tsSel); // 1=Pon ... 7=Ned
+        $ponedeljak = date('Y-m-d', strtotime('-' . ($dowSel - 1) . ' days', $tsSel));
+        $datumi = [];
+        for ($i = 0; $i < 6; $i++) { // Pon..Sub (nedelja se ne radi)
+            $datumi[] = date('Y-m-d', strtotime("+$i days", strtotime($ponedeljak)));
+        }
 
         $dani = [];
         foreach ($datumi as $d) {
-            // Prikaži zadatak ako je korisnik RADNIK na njemu ILI je „odgovoran za unos
-            // materijala" (i ako nije radnik). Nacrti se ne prikazuju (samo objavljeno).
+            // Prikaži SVE objavljene zadatke tog dana (svi vide sve). Nacrti se ne prikazuju.
             $stmt = $this->db->prepare("
                 SELECT rs.*,
                        g.naziv AS gradiliste_naziv,
@@ -59,13 +52,31 @@ while ($dodato < 4) {
                 LEFT JOIN admin_korisnici ko ON rs.odgovoran_id = ko.id
                 WHERE rd.datum = ?
                   AND rs.status = 'objavljeno'
-                  AND (rr.radnik_id = ? OR rs.odgovoran_id = ?)
-                ORDER BY rr.vreme_od ASC, rs.id ASC
+                ORDER BY rs.id ASC
             ");
-            $stmt->execute([$uid, $d, $uid, $uid]);
+            $stmt->execute([$uid, $d]);
             $stavke = $stmt->fetchAll(\PDO::FETCH_ASSOC);
 
             foreach ($stavke as &$s) {
+                // Ceo tim zadatka (svi članovi + njihova vremena) — da svako vidi ko je sa kim.
+                $tStmt = $this->db->prepare("
+                    SELECT rr.radnik_id, rr.vreme_od, rr.vreme_do, k.ime
+                    FROM raspored_radnici rr
+                    JOIN admin_korisnici k ON rr.radnik_id = k.id
+                    WHERE rr.stavka_id = ?
+                    ORDER BY k.ime
+                ");
+                $tStmt->execute([$s['id']]);
+                $s['radnici'] = $tStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+                // Flagovi: je li ulogovani RADNIK na zadatku i/ili ODGOVORAN za materijal.
+                // (Određuju boju kartice i koja dugmad za unos se prikazuju.)
+                $jeRadnik = false;
+                foreach ($s['radnici'] as $r) {
+                    if ((int)$r['radnik_id'] === (int)$uid) { $jeRadnik = true; break; }
+                }
+                $s['je_radnik'] = $jeRadnik;
+                $s['je_moj']    = $jeRadnik || ((int)($s['odgovoran_id'] ?? 0) === (int)$uid);
                 // Da li je korisnik već uneo radno vreme / materijal za OVU stavku (zadatak je
                 // jednodnevni, pa ne vezujemo za datum — unos se snima sa današnjim datumom).
                 // → ikonice se zasive (view koristi vreme_upisano / materijal_upisan).
@@ -106,8 +117,14 @@ while ($dodato < 4) {
                     $s['nove_poruke_count'] = 0;
                 }
             }
+            unset($s);
 
-            $dani[$d] = $stavke;
+            // Unutar dana: prvo zadaci gde je ulogovani korisnik, pa ostali (redosled inače ostaje).
+            $moji = []; $ostali = [];
+            foreach ($stavke as $st) {
+                if (!empty($st['je_moj'])) $moji[] = $st; else $ostali[] = $st;
+            }
+            $dani[$d] = array_merge($moji, $ostali);
         }
 
         // Gradilišta za slobodan unos

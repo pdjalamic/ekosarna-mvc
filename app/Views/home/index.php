@@ -29,6 +29,7 @@ if ($je_direktor) {
         // — osnovnih 6 —
         ['zadaci',     'Zadaci',        $ico['zadaci'],     'home-badge-zadaci',  $counts['zadaci']  ?? 0, '#2563eb', 'Pregled i upravljanje zadacima'],
         ['raspored',   'Raspored',      $ico['raspored'],   null,                 0,                       '#7c3aed', 'Planiranje i pregled rasporeda'],
+        ['danas',      'Dnevni raspored', $ico['raspored'], null,                 0,                       '#0891b2', 'Nedeljni pregled — svi zadaci i ekipe'],
         ['evidencija', 'Evidencija',    $ico['evidencija'], null,                 0,                       '#16a34a', 'Evidencija i izveštaji'],
         ['poruke',     'Poruke',        $ico['poruke'],     'home-badge-poruke',  $counts['poruke']  ?? 0, '#0d9488', 'Komunikacija i razmena poruka'],
         ['imenik',     'Imenik',        $ico['imenik'],     null,                 0,                       '#c026d3', 'Kontakti i poslovni partneri'],
@@ -41,7 +42,7 @@ if ($je_direktor) {
         ['tim',        'Tim',           $ico['tim'],        null,                 0,                       '#4f46e5', 'Upravljanje timovima i ulogama'],
         ['obavestenja','Obaveštenja',   $ico['obavestenja'],null,                 0,                       '#dc2626', 'Sva obaveštenja na jednom mestu'],
     ];
-    $primarni = 6;
+    $primarni = 7;
 } elseif ($je_elektricar) {
     $tiles = [
         ['danas',      'Raspored',   $ico['raspored'],   null,                 0,                       '#7c3aed', 'Tvoj raspored i zaduženja'],
@@ -61,6 +62,7 @@ if ($je_direktor) {
         ['zadaci',     'Zadaci',        $ico['zadaci'],     'home-badge-zadaci', $counts['zadaci']  ?? 0, '#2563eb', 'Pregled i upravljanje zadacima'],
         ['nabavka',    'Nabavka',       $ico['nabavka'],    'home-badge-nabavka',$counts['nabavka'] ?? 0, '#ea580c', 'Zahtevi i porudžbine nabavke'],
         ['raspored',   'Raspored',      $ico['raspored'],   null,                0,                       '#7c3aed', 'Planiranje i pregled rasporeda'],
+        ['danas',      'Dnevni raspored', $ico['raspored'], null,                0,                       '#0891b2', 'Nedeljni pregled — svi zadaci i ekipe'],
         ['poruke',     'Poruke',        $ico['poruke'],     'home-badge-poruke', $counts['poruke']  ?? 0, '#0d9488', 'Komunikacija i razmena poruka'],
         ['kontakt',    'Kontakt forme', $ico['kontakt'],    'home-badge-kontakt',$counts['kontakt'] ?? 0, '#db2777', 'Primljene kontakt forme'],
         ['gradilista', 'Gradilišta',    $ico['gradilista'], null,                0,                       '#b45309', 'Pregled i upravljanje gradilištima'],
